@@ -132,6 +132,8 @@ $env:WEAVEXDR_API_TOKEN = '<32자 이상의 임의 토큰>'
 
 브라우저에서 `http://127.0.0.1:8765/dashboard`를 열고 같은 API 토큰을 입력하면 사건 목록·판정·증거와 현재 탐지/위험/허용 목록 정책 및 모델 상태를 볼 수 있다. 새 사건은 제한된 메모리 큐와 SSE를 통해 즉시 반영되며, 화면 입력은 HTML로 해석하지 않아 수집 데이터에 의한 스크립트 삽입을 막는다.
 
+보안 지식 그래프는 사건 보고서를 SQLite의 Host/User/Process/File/IP/Alert 노드와 관계로 변환해 유사 사건, 공격 경로와 프로세스-파일-네트워크 연계 탐지를 제공한다. 자세한 저장 기준은 [아키텍처 문서](docs/ARCHITECTURE.md)를 참고한다.
+
 ## Sysmon 수집 환경
 
 Microsoft Sysmon 15.21 서비스와 드라이버를 설정 스키마 4.91로 설치했다. 프로젝트 기준 설정은 `config/sysmon-minimal.xml`, 실제 적용 사본은 `C:\ProgramData\PersonalXDR\sysmon-minimal.xml`이다.
@@ -184,7 +186,7 @@ powershell.exe -ExecutionPolicy Bypass -File .\scripts\verify_sysmon.ps1 -Output
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-테스트는 그래프 판정, 수집·저장, 탐지·오탐 관리, 실제 대응, 인증된 로컬 API와 대시보드를 검증한다. 현재 전체 결과는 `100 passed`, 기준 평가는 `30/30 passed`다.
+테스트는 그래프 판정, 수집·저장, 탐지·오탐 관리, 실제 대응, 인증된 로컬 API, 대시보드와 지식 그래프를 검증한다. 현재 전체 결과는 `103 passed`, 기준 평가는 `30/30 passed`다.
 
 ## 기준 평가
 
