@@ -64,6 +64,10 @@ removed = store.cleanup_expired()
 
 Defender 검사는 Windows 권한 정책에 따라 관리자 권한이 필요할 수 있다. 검사 실패는 정상 판정으로 바꾸지 않고 `scanned=False`와 오류 내용으로 반환한다.
 
+검사 엔진은 기본 100MB 파일 크기 제한과 서명·YARA·Defender별 시간 제한을 적용한다. 일부 검사기가 실패해도 완료된 해시와 다른 검사 결과는 `errors`와 함께 보존한다.
+
+`DirectoryFileWatcher`는 기본적으로 다운로드와 임시 폴더의 신규 파일을 폴링한다. 파일 크기와 수정 시각이 두 번 연속 같을 때만 검사해 다운로드 중인 파일을 피하며, 심볼릭 링크와 기존 파일은 자동 검사하지 않는다. 감시 결과는 `FileCreateEvent`와 `FileInspectionResult`를 함께 제공하므로 다음 상관분석 단계에서 사건 그래프에 연결할 수 있다.
+
 ## Sysmon 수집 환경
 
 Microsoft Sysmon 15.21 서비스와 드라이버를 설정 스키마 4.91로 설치했다. 프로젝트 기준 설정은 `config/sysmon-minimal.xml`, 실제 적용 사본은 `C:\ProgramData\PersonalXDR\sysmon-minimal.xml`이다.
@@ -116,7 +120,7 @@ powershell.exe -ExecutionPolicy Bypass -File .\scripts\verify_sysmon.ps1 -Output
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-테스트는 그래프 판정, 이벤트 저장과 파일 검사 결과 정규화를 검증한다. 현재 전체 결과는 `63 passed`다.
+테스트는 그래프 판정, 이벤트 저장, 제한된 파일 검사와 신규 파일 감시를 검증한다. 현재 전체 결과는 `67 passed`다.
 
 ## 기준 평가
 
@@ -137,7 +141,7 @@ powershell.exe -ExecutionPolicy Bypass -File .\scripts\verify_sysmon.ps1 -Output
 다음 항목은 후속 채팅에서 별도로 구현한다.
 
 - Sysmon 실시간 이벤트 수집
-- 다운로드·임시 폴더 실시간 파일 감시
+- 파일 검사 결과와 사건 그래프의 상관분석
 - 실제 프로세스 종료와 파일 격리
 - 장기 보안 지식 그래프
 

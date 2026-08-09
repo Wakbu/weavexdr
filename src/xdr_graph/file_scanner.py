@@ -58,6 +58,11 @@ class FileInspectionResult:
     yara_matches: tuple[YaraRuleMatch, ...]
     defender: DefenderResult
     findings: tuple[Finding, ...]
+    errors: tuple[str, ...]
+
+
+class FileTooLargeError(ValueError):
+    """설정된 최대 크기를 넘어 메모리·검사 시간을 과도하게 쓸 파일이다."""
 
 
 def _run_powershell_json(script: str, target_path: Path, timeout: float) -> str:
@@ -207,20 +212,57 @@ class FileInspectionEngine:
         *,
         signature_inspector: AuthenticodeInspector | None = None,
         defender_scanner: DefenderScanner | None = None,
+        max_file_size_bytes: int = 100 * 1024 * 1024,
+        signature_timeout: float = 10.0,
+        yara_timeout: int = 10,
+        defender_timeout: float = 120.0,
     ) -> None:
+        if max_file_size_bytes < 1:
+            raise ValueError("max_file_size_bytes must be at least 1")
+        if signature_timeout <= 0 or yara_timeout <= 0 or defender_timeout <= 0:
+            raise ValueError("inspection timeouts must be positive")
         self.yara_scanner = yara_scanner
         self.signature_inspector = signature_inspector or AuthenticodeInspector()
         self.defender_scanner = defender_scanner or DefenderScanner()
+        self.max_file_size_bytes = max_file_size_bytes
+        self.signature_timeout = signature_timeout
+        self.yara_timeout = yara_timeout
+        self.defender_timeout = defender_timeout
 
     def inspect(self, file_path: str | Path, *, event_id: str) -> FileInspectionResult:
         target_path = Path(file_path).resolve(strict=True)
         if not target_path.is_file():
             raise ValueError(f"inspection target is not a regular file: {target_path}")
+        file_size = target_path.stat().st_size
+        if file_size > self.max_file_size_bytes:
+            # 현재 YARA 경로는 파일 바이트를 메모리로 읽으므로 검사 전에 제한해야
+            # 대형 파일 하나가 수집 프로세스의 메모리를 고갈시키는 일을 막을 수 있다.
+            raise FileTooLargeError(
+                f"file exceeds inspection limit: {file_size}/{self.max_file_size_bytes} bytes"
+            )
 
         metadata = self._collect_metadata(target_path)
-        signature = self.signature_inspector.inspect(target_path)
-        yara_matches = self.yara_scanner.scan(target_path)
-        defender = self.defender_scanner.scan(target_path)
+        errors: list[str] = []
+        signature = self.signature_inspector.inspect(
+            target_path, timeout=self.signature_timeout
+        )
+        if signature.status == "error":
+            errors.append(f"signature: {signature.message or 'inspection failed'}")
+
+        try:
+            yara_matches = self.yara_scanner.scan(
+                target_path, timeout=self.yara_timeout
+            )
+        except (OSError, ValueError, yara.Error, yara.TimeoutError) as error:
+            # 한 검사기의 실패가 나머지 증거 수집까지 중단시키지 않도록 부분 결과를 보존한다.
+            yara_matches = ()
+            errors.append(f"yara: {error}")
+
+        defender = self.defender_scanner.scan(
+            target_path, timeout=self.defender_timeout
+        )
+        if not defender.scanned:
+            errors.append(f"defender: {defender.error or 'scan failed'}")
         findings = self._to_findings(event_id, signature, yara_matches, defender)
         return FileInspectionResult(
             metadata=metadata,
@@ -228,6 +270,7 @@ class FileInspectionEngine:
             yara_matches=yara_matches,
             defender=defender,
             findings=findings,
+            errors=tuple(errors),
         )
 
     @staticmethod

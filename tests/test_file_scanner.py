@@ -2,11 +2,15 @@ import hashlib
 import json
 from pathlib import Path
 
+import pytest
+import yara
+
 from xdr_graph.file_scanner import (
     AuthenticodeInspector,
     DefenderResult,
     DefenderScanner,
     FileInspectionEngine,
+    FileTooLargeError,
     SignatureResult,
     YaraScanner,
 )
@@ -14,6 +18,7 @@ from xdr_graph.file_scanner import (
 
 PROJECT_ROOT = Path(__file__).parents[1]
 SAMPLE_FILE = PROJECT_ROOT / "samples" / "suspicious_office_batch.json"
+BENIGN_FILE = PROJECT_ROOT / "samples" / "benign_document.txt"
 YARA_RULES = PROJECT_ROOT / "rules" / "file_scan.yar"
 
 
@@ -53,11 +58,11 @@ def test_defender_detection_is_normalized():
 
 def test_file_inspection_collects_metadata_and_creates_findings():
     class FixedSignatureInspector:
-        def inspect(self, target_path: Path) -> SignatureResult:
+        def inspect(self, target_path: Path, *, timeout: float) -> SignatureResult:
             return SignatureResult(status="invalid")
 
     class FixedDefenderScanner:
-        def scan(self, target_path: Path) -> DefenderResult:
+        def scan(self, target_path: Path, *, timeout: float) -> DefenderResult:
             return DefenderResult(scanned=True, threat_names=("Test.Threat",))
 
     engine = FileInspectionEngine(
@@ -75,3 +80,69 @@ def test_file_inspection_collects_metadata_and_creates_findings():
         "DEFENDER-MALWARE",
         "SIGNATURE-INVALID",
     }
+
+
+def test_safe_benign_and_inert_suspicious_files_are_distinguished():
+    class NoSignatureInspector:
+        def inspect(self, target_path: Path, *, timeout: float) -> SignatureResult:
+            return SignatureResult(status="not_signed")
+
+    class CleanDefenderScanner:
+        def scan(self, target_path: Path, *, timeout: float) -> DefenderResult:
+            return DefenderResult(scanned=True)
+
+    engine = FileInspectionEngine(
+        YaraScanner([YARA_RULES]),
+        signature_inspector=NoSignatureInspector(),
+        defender_scanner=CleanDefenderScanner(),
+    )
+
+    benign_result = engine.inspect(BENIGN_FILE, event_id="event-benign")
+    suspicious_result = engine.inspect(SAMPLE_FILE, event_id="event-inert-suspicious")
+
+    assert benign_result.findings == ()
+    assert suspicious_result.findings[0].rule_id == "YARA-Suspicious_Encoded_PowerShell"
+
+
+def test_file_size_limit_is_enforced_before_scanners_run():
+    engine = FileInspectionEngine(
+        YaraScanner([YARA_RULES]), max_file_size_bytes=10
+    )
+
+    with pytest.raises(FileTooLargeError, match="inspection limit"):
+        engine.inspect(SAMPLE_FILE, event_id="event-too-large")
+
+
+def test_scanner_failures_are_preserved_as_partial_result_errors():
+    class ErrorSignatureInspector:
+        def inspect(self, target_path: Path, *, timeout: float) -> SignatureResult:
+            assert timeout == 3
+            return SignatureResult(status="error", message="signature timeout")
+
+    class ErrorYaraScanner:
+        def scan(self, target_path: Path, *, timeout: int):
+            assert timeout == 4
+            raise yara.Error("rule failure")
+
+    class ErrorDefenderScanner:
+        def scan(self, target_path: Path, *, timeout: float) -> DefenderResult:
+            assert timeout == 5
+            return DefenderResult(scanned=False, error="Defender unavailable")
+
+    engine = FileInspectionEngine(
+        ErrorYaraScanner(),
+        signature_inspector=ErrorSignatureInspector(),
+        defender_scanner=ErrorDefenderScanner(),
+        signature_timeout=3,
+        yara_timeout=4,
+        defender_timeout=5,
+    )
+
+    result = engine.inspect(BENIGN_FILE, event_id="event-partial")
+
+    assert result.findings == ()
+    assert result.errors == (
+        "signature: signature timeout",
+        "yara: rule failure",
+        "defender: Defender unavailable",
+    )

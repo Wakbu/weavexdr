@@ -1,0 +1,1 @@
+This is an inert text file used to verify that ordinary content produces no YARA finding.
