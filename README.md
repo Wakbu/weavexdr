@@ -119,6 +119,17 @@ Defender 검사는 Windows 권한 정책에 따라 관리자 권한이 필요할
 
 무해한 파일의 실제 격리·복원과 무해한 테스트 프로세스 종료를 확인했다. Windows 방화벽 변경은 관리자 권한 환경에서만 실행되며 권한이 없으면 실패 상태와 감사 기록을 반환한다.
 
+## 로컬 API
+
+FastAPI 서버는 기본적으로 `127.0.0.1:8765`에만 바인딩하며 최소 32자의 `WEAVEXDR_API_TOKEN` Bearer 인증을 요구한다. `/health` 외의 사건·대응 API는 인증 없이는 접근할 수 없다.
+
+```powershell
+$env:WEAVEXDR_API_TOKEN = '<32자 이상의 임의 토큰>'
+.\.venv\Scripts\python.exe -m xdr_graph.api
+```
+
+제공 API는 사건 목록·상세·위험 점수·Finding·원본 이벤트 조회, 대응 dry-run, 승인 요청·결정, 실제 대응과 격리 복원을 포함한다. 실제 대응 실행기는 애플리케이션 구성에서 명시적으로 주입하지 않으면 `503`으로 비활성화된다.
+
 ## Sysmon 수집 환경
 
 Microsoft Sysmon 15.21 서비스와 드라이버를 설정 스키마 4.91로 설치했다. 프로젝트 기준 설정은 `config/sysmon-minimal.xml`, 실제 적용 사본은 `C:\ProgramData\PersonalXDR\sysmon-minimal.xml`이다.
@@ -171,7 +182,7 @@ powershell.exe -ExecutionPolicy Bypass -File .\scripts\verify_sysmon.ps1 -Output
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-테스트는 그래프 판정, 수집·저장, 탐지·오탐 관리와 실제 대응의 재검증·복구·감사를 검증한다. 현재 전체 결과는 `93 passed`, 기준 평가는 `30/30 passed`다.
+테스트는 그래프 판정, 수집·저장, 탐지·오탐 관리, 실제 대응과 인증된 로컬 API를 검증한다. 현재 전체 결과는 `97 passed`, 기준 평가는 `30/30 passed`다.
 
 ## 기준 평가
 

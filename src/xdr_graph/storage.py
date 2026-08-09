@@ -150,6 +150,22 @@ class SQLiteEventStore:
             ).fetchone()
         return IncidentReport.model_validate_json(row["report_json"]) if row else None
 
+    def list_incident_reports(
+        self, *, limit: int = 100, offset: int = 0
+    ) -> list[IncidentReport]:
+        if limit < 1 or limit > 500 or offset < 0:
+            raise ValueError("invalid incident pagination")
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT report_json FROM incidents
+                ORDER BY updated_at DESC, incident_id
+                LIMIT ? OFFSET ?
+                """,
+                (limit, offset),
+            ).fetchall()
+        return [IncidentReport.model_validate_json(row["report_json"]) for row in rows]
+
     def save_processed_batch(
         self,
         batch: NormalizedEventBatch,

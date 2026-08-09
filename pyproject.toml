@@ -11,10 +11,12 @@ dependencies = [
     "langgraph>=1.0,<2",
     "pydantic>=2.11,<3",
     "yara-python>=4.5,<5",
+    "fastapi>=0.116,<1",
+    "uvicorn>=0.35,<1",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8,<10"]
+dev = ["pytest>=8,<10", "httpx>=0.28,<1"]
 
 [project.scripts]
 xdr-graph = "xdr_graph.cli:main"
