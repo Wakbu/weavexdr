@@ -1,0 +1,46 @@
+{
+  "schema_version": "1.0",
+  "batch_id": "batch-001",
+  "incident_id": "incident-001",
+  "collector_id": "sample-collector",
+  "received_at": "2026-08-09T10:00:10+09:00",
+  "events": [
+    {
+      "event_id": "event-001",
+      "event_type": "process_start",
+      "timestamp": "2026-08-09T10:00:00+09:00",
+      "host_id": "desktop-001",
+      "source": "sample",
+      "process_name": "powershell.exe",
+      "process_id": 4242,
+      "process_start_time": "2026-08-09T10:00:00+09:00",
+      "parent_process": "WINWORD.EXE",
+      "command_line": "powershell.exe -enc SQBFAFgA"
+    },
+    {
+      "event_id": "event-002",
+      "event_type": "file_create",
+      "timestamp": "2026-08-09T10:00:03+09:00",
+      "host_id": "desktop-001",
+      "source": "sample",
+      "process_name": "powershell.exe",
+      "process_id": 4242,
+      "process_start_time": "2026-08-09T10:00:00+09:00",
+      "file_path": "C:\\Users\\user\\AppData\\Local\\Temp\\update.exe"
+    },
+    {
+      "event_id": "event-003",
+      "event_type": "network_connect",
+      "timestamp": "2026-08-09T10:00:05+09:00",
+      "host_id": "desktop-001",
+      "source": "sample",
+      "process_name": "powershell.exe",
+      "process_id": 4242,
+      "process_start_time": "2026-08-09T10:00:00+09:00",
+      "destination_ip": "8.8.8.8",
+      "destination_port": 443,
+      "protocol": "tcp"
+    }
+  ]
+}
+

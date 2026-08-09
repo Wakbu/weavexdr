@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "personal-xdr-graph"
+version = "0.1.0"
+description = "Minimal execution-graph skeleton for a personal AI XDR"
+requires-python = ">=3.11"
+dependencies = [
+    "langgraph>=1.0,<2",
+    "pydantic>=2.11,<3",
+    "yara-python>=4.5,<5",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10"]
+
+[project.scripts]
+xdr-graph = "xdr_graph.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/xdr_graph"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

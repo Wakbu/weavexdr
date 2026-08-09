@@ -1,0 +1,275 @@
+[
+  {
+    "case_id": "EVAL-001",
+    "description": "Normal Notepad launch",
+    "incident": {
+      "incident_id": "eval-001",
+      "events": [{"event_id": "p1", "event_type": "process_start", "timestamp": "2026-08-08T10:00:00+09:00", "process_name": "notepad.exe", "parent_process": "explorer.exe", "command_line": "notepad.exe notes.txt"}]
+    },
+    "expected": {"verdict": "benign", "min_score": 0, "max_score": 0, "required_rule_ids": []}
+  },
+  {
+    "case_id": "EVAL-002",
+    "description": "Normal browser network connection",
+    "incident": {
+      "incident_id": "eval-002",
+      "events": [{"event_id": "n1", "event_type": "network_connect", "timestamp": "2026-08-08T10:01:00+09:00", "process_name": "chrome.exe", "destination_ip": "8.8.8.8"}]
+    },
+    "expected": {"verdict": "benign", "min_score": 0, "max_score": 0, "required_rule_ids": []}
+  },
+  {
+    "case_id": "EVAL-003",
+    "description": "Office application launches PowerShell",
+    "incident": {
+      "incident_id": "eval-003",
+      "events": [{"event_id": "p1", "event_type": "process_start", "timestamp": "2026-08-08T10:02:00+09:00", "process_name": "powershell.exe", "parent_process": "WINWORD.EXE", "command_line": "powershell.exe Get-Date"}]
+    },
+    "expected": {"verdict": "needs_review", "min_score": 40, "max_score": 40, "required_rule_ids": ["PROC-001"]}
+  },
+  {
+    "case_id": "EVAL-004",
+    "description": "Encoded PowerShell without corroboration",
+    "incident": {
+      "incident_id": "eval-004",
+      "events": [{"event_id": "p1", "event_type": "process_start", "timestamp": "2026-08-08T10:03:00+09:00", "process_name": "powershell.exe", "parent_process": "explorer.exe", "command_line": "powershell.exe -enc SQBFAFgA"}]
+    },
+    "expected": {"verdict": "needs_review", "min_score": 35, "max_score": 35, "required_rule_ids": ["PROC-002"]}
+  },
+  {
+    "case_id": "EVAL-005",
+    "description": "Two behavior findings require independent corroboration",
+    "incident": {
+      "incident_id": "eval-005",
+      "events": [{"event_id": "p1", "event_type": "process_start", "timestamp": "2026-08-08T10:04:00+09:00", "process_name": "powershell.exe", "parent_process": "WINWORD.EXE", "command_line": "powershell.exe -enc SQBFAFgA"}]
+    },
+    "expected": {"verdict": "needs_review", "min_score": 75, "max_score": 75, "required_rule_ids": ["PROC-001", "PROC-002"]}
+  },
+  {
+    "case_id": "EVAL-006",
+    "description": "Executable created in a temporary directory",
+    "incident": {
+      "incident_id": "eval-006",
+      "events": [{"event_id": "f1", "event_type": "file_create", "timestamp": "2026-08-08T10:05:00+09:00", "process_name": "setup.exe", "file_path": "C:\\Users\\user\\AppData\\Local\\Temp\\tool.exe"}]
+    },
+    "expected": {"verdict": "benign", "min_score": 30, "max_score": 30, "required_rule_ids": ["FILE-001"]}
+  },
+  {
+    "case_id": "EVAL-007",
+    "description": "Office-launched PowerShell creates an executable",
+    "incident": {
+      "incident_id": "eval-007",
+      "events": [
+        {"event_id": "p1", "event_type": "process_start", "timestamp": "2026-08-08T10:06:00+09:00", "process_name": "powershell.exe", "parent_process": "WINWORD.EXE", "command_line": "powershell.exe Get-Date"},
+        {"event_id": "f1", "event_type": "file_create", "timestamp": "2026-08-08T10:06:01+09:00", "process_name": "powershell.exe", "file_path": "C:\\Users\\user\\AppData\\Local\\Temp\\dropper.exe"}
+      ]
+    },
+    "expected": {"verdict": "suspicious", "min_score": 70, "max_score": 70, "required_rule_ids": ["PROC-001", "FILE-001"]}
+  },
+  {
+    "case_id": "EVAL-008",
+    "description": "Encoded PowerShell connects to a public IP",
+    "incident": {
+      "incident_id": "eval-008",
+      "events": [
+        {"event_id": "p1", "event_type": "process_start", "timestamp": "2026-08-08T10:07:00+09:00", "process_name": "powershell.exe", "parent_process": "explorer.exe", "command_line": "powershell.exe -enc SQBFAFgA"},
+        {"event_id": "n1", "event_type": "network_connect", "timestamp": "2026-08-08T10:07:01+09:00", "process_name": "powershell.exe", "destination_ip": "8.8.8.8"}
+      ]
+    },
+    "expected": {"verdict": "needs_review", "min_score": 55, "max_score": 55, "required_rule_ids": ["PROC-002", "NET-001"]}
+  },
+  {
+    "case_id": "EVAL-009",
+    "description": "Corroborated Office, encoded PowerShell, and file chain",
+    "incident": {
+      "incident_id": "eval-009",
+      "events": [
+        {"event_id": "p1", "event_type": "process_start", "timestamp": "2026-08-08T10:08:00+09:00", "process_name": "powershell.exe", "parent_process": "WINWORD.EXE", "command_line": "powershell.exe -enc SQBFAFgA"},
+        {"event_id": "f1", "event_type": "file_create", "timestamp": "2026-08-08T10:08:01+09:00", "process_name": "powershell.exe", "file_path": "C:\\Users\\user\\Downloads\\payload.exe"}
+      ]
+    },
+    "expected": {"verdict": "suspicious", "min_score": 100, "max_score": 100, "required_rule_ids": ["PROC-001", "PROC-002", "FILE-001"]}
+  },
+  {
+    "case_id": "EVAL-010",
+    "description": "WScript creates a script and connects externally",
+    "incident": {
+      "incident_id": "eval-010",
+      "events": [
+        {"event_id": "f1", "event_type": "file_create", "timestamp": "2026-08-08T10:09:00+09:00", "process_name": "wscript.exe", "file_path": "C:\\Users\\user\\AppData\\Local\\Temp\\stage.scr"},
+        {"event_id": "n1", "event_type": "network_connect", "timestamp": "2026-08-08T10:09:01+09:00", "process_name": "wscript.exe", "destination_ip": "8.8.8.8"}
+      ]
+    },
+    "expected": {"verdict": "needs_review", "min_score": 50, "max_score": 50, "required_rule_ids": ["FILE-001", "NET-001"]}
+  },
+  {
+    "case_id": "EVAL-011",
+    "description": "Excel launches Command Prompt",
+    "incident": {"incident_id": "eval-011", "events": [
+      {"event_id": "p1", "event_type": "process_start", "timestamp": "2026-08-08T10:10:00+09:00", "process_name": "cmd.exe", "parent_process": "EXCEL.EXE", "command_line": "cmd.exe /c whoami"}
+    ]},
+    "expected": {"verdict": "needs_review", "min_score": 40, "max_score": 40, "required_rule_ids": ["PROC-001"]}
+  },
+  {
+    "case_id": "EVAL-012",
+    "description": "PowerPoint launches MSHTA",
+    "incident": {"incident_id": "eval-012", "events": [
+      {"event_id": "p1", "event_type": "process_start", "timestamp": "2026-08-08T10:11:00+09:00", "process_name": "mshta.exe", "parent_process": "POWERPNT.EXE", "command_line": "mshta.exe local.hta"}
+    ]},
+    "expected": {"verdict": "needs_review", "min_score": 40, "max_score": 40, "required_rule_ids": ["PROC-001"]}
+  },
+  {
+    "case_id": "EVAL-013",
+    "description": "Outlook launches WScript",
+    "incident": {"incident_id": "eval-013", "events": [
+      {"event_id": "p1", "event_type": "process_start", "timestamp": "2026-08-08T10:12:00+09:00", "process_name": "wscript.exe", "parent_process": "OUTLOOK.EXE", "command_line": "wscript.exe attachment.vbs"}
+    ]},
+    "expected": {"verdict": "needs_review", "min_score": 40, "max_score": 40, "required_rule_ids": ["PROC-001"]}
+  },
+  {
+    "case_id": "EVAL-014",
+    "description": "PWSh uses EncodedCommand",
+    "incident": {"incident_id": "eval-014", "events": [
+      {"event_id": "p1", "event_type": "process_start", "timestamp": "2026-08-08T10:13:00+09:00", "process_name": "pwsh.exe", "parent_process": "explorer.exe", "command_line": "pwsh.exe -EncodedCommand SQBFAFgA "}
+    ]},
+    "expected": {"verdict": "needs_review", "min_score": 35, "max_score": 35, "required_rule_ids": ["PROC-002"]}
+  },
+  {
+    "case_id": "EVAL-015",
+    "description": "PowerShell uses FromBase64String",
+    "incident": {"incident_id": "eval-015", "events": [
+      {"event_id": "p1", "event_type": "process_start", "timestamp": "2026-08-08T10:14:00+09:00", "process_name": "powershell.exe", "parent_process": "explorer.exe", "command_line": "powershell.exe [Convert]::FromBase64String($x)"}
+    ]},
+    "expected": {"verdict": "needs_review", "min_score": 35, "max_score": 35, "required_rule_ids": ["PROC-002"]}
+  },
+  {
+    "case_id": "EVAL-016",
+    "description": "DLL created in Downloads",
+    "incident": {"incident_id": "eval-016", "events": [
+      {"event_id": "f1", "event_type": "file_create", "timestamp": "2026-08-08T10:15:00+09:00", "process_name": "chrome.exe", "file_path": "C:\\Users\\user\\Downloads\\plugin.dll"}
+    ]},
+    "expected": {"verdict": "benign", "min_score": 30, "max_score": 30, "required_rule_ids": ["FILE-001"]}
+  },
+  {
+    "case_id": "EVAL-017",
+    "description": "PowerShell script created in Downloads",
+    "incident": {"incident_id": "eval-017", "events": [
+      {"event_id": "f1", "event_type": "file_create", "timestamp": "2026-08-08T10:16:00+09:00", "process_name": "chrome.exe", "file_path": "C:\\Users\\user\\Downloads\\install.ps1"}
+    ]},
+    "expected": {"verdict": "benign", "min_score": 30, "max_score": 30, "required_rule_ids": ["FILE-001"]}
+  },
+  {
+    "case_id": "EVAL-018",
+    "description": "File created outside user-writable paths",
+    "incident": {"incident_id": "eval-018", "events": [
+      {"event_id": "f1", "event_type": "file_create", "timestamp": "2026-08-08T10:17:00+09:00", "process_name": "trustedinstaller.exe", "file_path": "C:\\Windows\\System32\\safe.dll"}
+    ]},
+    "expected": {"verdict": "benign", "min_score": 0, "max_score": 0, "required_rule_ids": []}
+  },
+  {
+    "case_id": "EVAL-019",
+    "description": "PowerShell connects to a private IP",
+    "incident": {"incident_id": "eval-019", "events": [
+      {"event_id": "n1", "event_type": "network_connect", "timestamp": "2026-08-08T10:18:00+09:00", "process_name": "powershell.exe", "destination_ip": "192.168.1.10"}
+    ]},
+    "expected": {"verdict": "benign", "min_score": 0, "max_score": 0, "required_rule_ids": []}
+  },
+  {
+    "case_id": "EVAL-020",
+    "description": "Loopback destination is not treated as public",
+    "incident": {"incident_id": "eval-020", "events": [
+      {"event_id": "n1", "event_type": "network_connect", "timestamp": "2026-08-08T10:19:00+09:00", "process_name": "powershell.exe", "destination_ip": "::1"}
+    ]},
+    "expected": {"verdict": "benign", "min_score": 0, "max_score": 0, "required_rule_ids": []}
+  },
+  {
+    "case_id": "EVAL-021",
+    "description": "Command Prompt makes an isolated public connection",
+    "incident": {"incident_id": "eval-021", "events": [
+      {"event_id": "n1", "event_type": "network_connect", "timestamp": "2026-08-08T10:20:00+09:00", "process_name": "cmd.exe", "destination_ip": "1.1.1.1"}
+    ]},
+    "expected": {"verdict": "benign", "min_score": 20, "max_score": 20, "required_rule_ids": ["NET-001"]}
+  },
+  {
+    "case_id": "EVAL-022",
+    "description": "Excel-launched Command Prompt connects externally",
+    "incident": {"incident_id": "eval-022", "events": [
+      {"event_id": "p1", "event_type": "process_start", "timestamp": "2026-08-08T10:21:00+09:00", "process_name": "cmd.exe", "parent_process": "EXCEL.EXE", "command_line": "cmd.exe /c whoami"},
+      {"event_id": "n1", "event_type": "network_connect", "timestamp": "2026-08-08T10:21:01+09:00", "process_name": "cmd.exe", "destination_ip": "1.1.1.1"}
+    ]},
+    "expected": {"verdict": "needs_review", "min_score": 60, "max_score": 60, "required_rule_ids": ["PROC-001", "NET-001"]}
+  },
+  {
+    "case_id": "EVAL-023",
+    "description": "PowerPoint-launched MSHTA creates a DLL",
+    "incident": {"incident_id": "eval-023", "events": [
+      {"event_id": "p1", "event_type": "process_start", "timestamp": "2026-08-08T10:22:00+09:00", "process_name": "mshta.exe", "parent_process": "POWERPNT.EXE", "command_line": "mshta.exe stage.hta"},
+      {"event_id": "f1", "event_type": "file_create", "timestamp": "2026-08-08T10:22:01+09:00", "process_name": "mshta.exe", "file_path": "C:\\Users\\user\\AppData\\Local\\Temp\\stage.dll"}
+    ]},
+    "expected": {"verdict": "suspicious", "min_score": 70, "max_score": 70, "required_rule_ids": ["PROC-001", "FILE-001"]}
+  },
+  {
+    "case_id": "EVAL-024",
+    "description": "Outlook-launched WScript creates a script and connects externally",
+    "incident": {"incident_id": "eval-024", "events": [
+      {"event_id": "p1", "event_type": "process_start", "timestamp": "2026-08-08T10:23:00+09:00", "process_name": "wscript.exe", "parent_process": "OUTLOOK.EXE", "command_line": "wscript.exe invoice.vbs"},
+      {"event_id": "f1", "event_type": "file_create", "timestamp": "2026-08-08T10:23:01+09:00", "process_name": "wscript.exe", "file_path": "C:\\Users\\user\\AppData\\Local\\Temp\\stage.scr"},
+      {"event_id": "n1", "event_type": "network_connect", "timestamp": "2026-08-08T10:23:02+09:00", "process_name": "wscript.exe", "destination_ip": "9.9.9.9"}
+    ]},
+    "expected": {"verdict": "suspicious", "min_score": 90, "max_score": 90, "required_rule_ids": ["PROC-001", "FILE-001", "NET-001"]}
+  },
+  {
+    "case_id": "EVAL-025",
+    "description": "Encoded PWSh creates a script",
+    "incident": {"incident_id": "eval-025", "events": [
+      {"event_id": "p1", "event_type": "process_start", "timestamp": "2026-08-08T10:24:00+09:00", "process_name": "pwsh.exe", "parent_process": "explorer.exe", "command_line": "pwsh.exe -enc SQBFAFgA"},
+      {"event_id": "f1", "event_type": "file_create", "timestamp": "2026-08-08T10:24:01+09:00", "process_name": "pwsh.exe", "file_path": "C:\\Users\\user\\AppData\\Local\\Temp\\stage.ps1"}
+    ]},
+    "expected": {"verdict": "needs_review", "min_score": 65, "max_score": 65, "required_rule_ids": ["PROC-002", "FILE-001"]}
+  },
+  {
+    "case_id": "EVAL-026",
+    "description": "Office-launched encoded PWSh connects externally",
+    "incident": {"incident_id": "eval-026", "events": [
+      {"event_id": "p1", "event_type": "process_start", "timestamp": "2026-08-08T10:25:00+09:00", "process_name": "pwsh.exe", "parent_process": "WINWORD.EXE", "command_line": "pwsh.exe -enc SQBFAFgA"},
+      {"event_id": "n1", "event_type": "network_connect", "timestamp": "2026-08-08T10:25:01+09:00", "process_name": "pwsh.exe", "destination_ip": "9.9.9.9"}
+    ]},
+    "expected": {"verdict": "suspicious", "min_score": 95, "max_score": 95, "required_rule_ids": ["PROC-001", "PROC-002", "NET-001"]}
+  },
+  {
+    "case_id": "EVAL-027",
+    "description": "Command Prompt creates an executable and connects externally",
+    "incident": {"incident_id": "eval-027", "events": [
+      {"event_id": "f1", "event_type": "file_create", "timestamp": "2026-08-08T10:26:00+09:00", "process_name": "cmd.exe", "file_path": "C:\\Users\\user\\AppData\\Local\\Temp\\utility.exe"},
+      {"event_id": "n1", "event_type": "network_connect", "timestamp": "2026-08-08T10:26:01+09:00", "process_name": "cmd.exe", "destination_ip": "1.1.1.1"}
+    ]},
+    "expected": {"verdict": "needs_review", "min_score": 50, "max_score": 50, "required_rule_ids": ["FILE-001", "NET-001"]}
+  },
+  {
+    "case_id": "EVAL-028",
+    "description": "Explorer launches plain PowerShell",
+    "incident": {"incident_id": "eval-028", "events": [
+      {"event_id": "p1", "event_type": "process_start", "timestamp": "2026-08-08T10:27:00+09:00", "process_name": "powershell.exe", "parent_process": "explorer.exe", "command_line": "powershell.exe Get-Process"}
+    ]},
+    "expected": {"verdict": "benign", "min_score": 0, "max_score": 0, "required_rule_ids": []}
+  },
+  {
+    "case_id": "EVAL-029",
+    "description": "Office-launched Command Prompt creates a DLL and connects externally",
+    "incident": {"incident_id": "eval-029", "events": [
+      {"event_id": "p1", "event_type": "process_start", "timestamp": "2026-08-08T10:28:00+09:00", "process_name": "cmd.exe", "parent_process": "WINWORD.EXE", "command_line": "cmd.exe /c run.bat"},
+      {"event_id": "f1", "event_type": "file_create", "timestamp": "2026-08-08T10:28:01+09:00", "process_name": "cmd.exe", "file_path": "C:\\Users\\user\\Downloads\\stage.dll"},
+      {"event_id": "n1", "event_type": "network_connect", "timestamp": "2026-08-08T10:28:02+09:00", "process_name": "cmd.exe", "destination_ip": "9.9.9.9"}
+    ]},
+    "expected": {"verdict": "suspicious", "min_score": 90, "max_score": 90, "required_rule_ids": ["PROC-001", "FILE-001", "NET-001"]}
+  },
+  {
+    "case_id": "EVAL-030",
+    "description": "Full Excel and encoded PowerShell attack chain",
+    "incident": {"incident_id": "eval-030", "events": [
+      {"event_id": "p1", "event_type": "process_start", "timestamp": "2026-08-08T10:29:00+09:00", "process_name": "powershell.exe", "parent_process": "EXCEL.EXE", "command_line": "powershell.exe -enc SQBFAFgA"},
+      {"event_id": "f1", "event_type": "file_create", "timestamp": "2026-08-08T10:29:01+09:00", "process_name": "powershell.exe", "file_path": "C:\\Users\\user\\AppData\\Local\\Temp\\payload.exe"},
+      {"event_id": "n1", "event_type": "network_connect", "timestamp": "2026-08-08T10:29:02+09:00", "process_name": "powershell.exe", "destination_ip": "9.9.9.9"}
+    ]},
+    "expected": {"verdict": "suspicious", "min_score": 100, "max_score": 100, "required_rule_ids": ["PROC-001", "PROC-002", "FILE-001", "NET-001"]}
+  }
+]

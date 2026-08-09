@@ -1,0 +1,28 @@
+{
+  "incident_id": "incident-001",
+  "events": [
+    {
+      "event_id": "event-001",
+      "event_type": "process_start",
+      "timestamp": "2026-08-06T10:00:00+09:00",
+      "process_name": "powershell.exe",
+      "parent_process": "WINWORD.EXE",
+      "command_line": "powershell.exe -enc SQBFAFgA"
+    },
+    {
+      "event_id": "event-002",
+      "event_type": "file_create",
+      "timestamp": "2026-08-06T10:00:03+09:00",
+      "process_name": "powershell.exe",
+      "file_path": "C:\\Users\\user\\AppData\\Local\\Temp\\update.exe"
+    },
+    {
+      "event_id": "event-003",
+      "event_type": "network_connect",
+      "timestamp": "2026-08-06T10:00:05+09:00",
+      "process_name": "powershell.exe",
+      "destination_ip": "8.8.8.8"
+    }
+  ]
+}
+
