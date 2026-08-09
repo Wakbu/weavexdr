@@ -30,7 +30,7 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-현재 회귀 테스트는 `126 passed`, 기준 평가 데이터는 `30/30 passed`다.
+현재 회귀 테스트는 `127 passed`, 기준 평가 데이터는 `30/30 passed`다.
 
 ## 문서
 

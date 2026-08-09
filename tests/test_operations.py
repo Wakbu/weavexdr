@@ -6,7 +6,11 @@ import zipfile
 from pathlib import Path
 
 from xdr_graph.logging_setup import configure_rotating_logging
-from xdr_graph.desktop import choose_server_port, verify_embedded_server
+from xdr_graph.desktop import (
+    FORCED_SHUTDOWN_TIMEOUT_SECONDS,
+    choose_server_port,
+    verify_embedded_server,
+)
 from xdr_graph.release_validation import validate_windows_package
 from xdr_graph.update_manager import apply_update, rollback_update
 from xdr_graph.windows_service import SERVICE_NAME
@@ -149,3 +153,9 @@ def test_explicit_desktop_port_is_validated():
             pass
         else:
             raise AssertionError(f"invalid port must be rejected: {invalid_port}")
+
+
+def test_desktop_shutdown_deadline_is_bounded():
+    # 명시적 종료 후 번들 프로세스가 무기한 남지 않아야 하되 정상 DB 정리 시간을
+    # 확보할 수 있도록 지나치게 짧은 제한도 허용하지 않는다.
+    assert 10 <= FORCED_SHUTDOWN_TIMEOUT_SECONDS <= 30

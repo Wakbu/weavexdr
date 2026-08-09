@@ -94,6 +94,12 @@ def test_dashboard_and_settings_are_available_without_rendering_event_html():
         assert "saveToken(" not in dashboard.text
         assert "별도 인증 정보 입력은 필요하지 않습니다" in dashboard.text
         assert "location.host" in dashboard.text
+        assert "incidentPageSize: 50" in dashboard.text
+        assert "[50,100].forEach" in dashboard.text
+        assert "incidentPagination(filtered.length)" in dashboard.text
+        assert ".graph-node:focus-visible rect" in dashboard.text
+        assert "state.incidents.filter(item=>item.incident_id!==report.incident_id)" in dashboard.text
+        assert "분류되지 않은 보안 사건" in dashboard.text
 
         assert client.get("/settings").status_code == 401
         settings = client.get("/settings", headers=AUTH).json()

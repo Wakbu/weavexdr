@@ -23,6 +23,9 @@ from xdr_graph.storage import PersistentIngestionService, SQLiteEventStore
 from xdr_graph.sysmon_collector import SysmonCollector
 
 
+FORCED_SHUTDOWN_TIMEOUT_SECONDS = 20.0
+
+
 def request_collector_access_setup() -> None:
     """번들된 설정 스크립트를 Windows UAC 승인 흐름으로 실행한다."""
 
@@ -64,6 +67,7 @@ def build_embedded_server(app, *, port: int) -> uvicorn.Server:
         lifespan="off",
         log_config=None,
         access_log=False,
+        timeout_graceful_shutdown=5,
     )
     return uvicorn.Server(config)
 
@@ -157,7 +161,27 @@ def main() -> None:
         threading.Timer(1.0, lambda: webbrowser.open(dashboard_url)).start()
     logger.info("desktop runtime started")
     server = build_embedded_server(app, port=server_port)
-    runtime.shutdown_callback = lambda: setattr(server, "should_exit", True)
+    shutdown_completed = threading.Event()
+
+    def request_shutdown() -> None:
+        server.should_exit = True
+
+        # 정상 종료가 스트림·Windows 이벤트 API·번들 런타임 문제로 멈추더라도
+        # 사용자가 명시적으로 종료한 EXE가 무기한 남지 않게 최종 안전망을 둔다.
+        # 정상 경로는 DB와 수집기를 먼저 닫고 아래 이벤트를 설정하므로 강제 종료는
+        # 제한 시간 안에 정리되지 않은 비정상 상황에서만 실행된다.
+        def enforce_shutdown_deadline() -> None:
+            if not shutdown_completed.wait(FORCED_SHUTDOWN_TIMEOUT_SECONDS):
+                logger.error("graceful shutdown timed out; terminating desktop runtime")
+                os._exit(0)
+
+        threading.Thread(
+            target=enforce_shutdown_deadline,
+            name="weavexdr-shutdown-watchdog",
+            daemon=True,
+        ).start()
+
+    runtime.shutdown_callback = request_shutdown
     runtime.collector_setup_callback = request_collector_access_setup
     ingestion_service = PersistentIngestionService(
         store,
@@ -184,6 +208,7 @@ def main() -> None:
         # 종료 버튼과 예외 종료 모두 DB 핸들을 닫아 업데이트·백업 시 파일 잠금이 남지 않게 한다.
         store.close()
         logger.info("desktop runtime stopped")
+        shutdown_completed.set()
 
 
 if __name__ == "__main__":
