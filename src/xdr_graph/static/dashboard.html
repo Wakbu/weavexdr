@@ -314,7 +314,7 @@
 
 <script>
   let launchToken = new URLSearchParams(location.hash.slice(1)).get('token') || '';
-  const state = { token: '', incidents: [], settings: null, status: null, selected: null, tab: 'graph', streaming: false, streamController: null, statusTimer: null, graphViews: new Map(), overviewRenderKey: '', incidentPage: 1, incidentPageSize: 50 };
+  const state = { token: '', incidents: [], incidentPageItems: [], incidentStats: {total:0,filtered_total:0,verdicts:{suspicious:0,needs_review:0,benign:0},daily:{}}, settings: null, status: null, selected: null, tab: 'graph', streaming: false, streamController: null, statusTimer: null, incidentRefreshTimer: null, filterTimer: null, graphViews: new Map(), overviewRenderKey: '', incidentPage: 1, incidentPageSize: 50 };
   const pageInfo = { overview:['보안 개요','현재 PC의 탐지 상태와 주요 사건을 확인합니다.'], incidents:['사건','탐지된 사건을 필터링하고 우선순위에 따라 조사합니다.'], investigation:['조사','연결된 증거와 공격 흐름을 따라 사건을 분석합니다.'], settings:['설정','수집기, 탐지 정책, 모델과 연결 상태를 관리합니다.'] };
   const verdictLabel = { suspicious:'고위험', needs_review:'검토 필요', benign:'정상' };
   const eventLabel = { process_start:'프로세스 시작', file_create:'파일 생성', network_connect:'네트워크 연결' };
@@ -334,10 +334,19 @@
     // 원문 토큰은 HttpOnly 프로세스 세션으로 교환한 즉시 메모리와 주소에서 제거한다.
     state.token='';launchToken='';history.replaceState(null,'',location.pathname+location.search);
   }
+  function incidentFilterQuery(){const params=new URLSearchParams(),query=document.querySelector('#incident-search').value.trim(),verdict=document.querySelector('#verdict-filter').value;if(query)params.set('query',query);if(verdict!=='all')params.set('verdict',verdict);return params;}
+  async function refreshIncidentData({updatedIncidentId=null,force=false}={}){
+    const filterParams=incidentFilterQuery();
+    // 전체 KPI·필터 건수와 개요 최신 5건을 페이지 데이터와 분리한다. 따라서
+    // 새로고침해도 API 기본 limit 100이 전체 사건 수로 잘못 표시되지 않는다.
+    const [overviewItems,stats]=await Promise.all([api('/incidents?limit=5'),api(`/incidents/stats?${filterParams}`)]);state.incidentStats=stats;
+    const pageCount=Math.max(1,Math.ceil(stats.filtered_total/state.incidentPageSize));state.incidentPage=Math.min(state.incidentPage,pageCount);const pageParams=new URLSearchParams(filterParams);pageParams.set('limit',String(state.incidentPageSize));pageParams.set('offset',String((state.incidentPage-1)*state.incidentPageSize));
+    state.incidents=overviewItems;state.incidentPageItems=await api(`/incidents?${pageParams}`);renderIncidentViews({updatedIncidentId,force});
+  }
   async function loadAll() {
     try {
-      [state.incidents,state.settings,state.status] = await Promise.all([api('/incidents'),api('/settings'),api('/status')]);
-      setConnected(true); renderAll(); if(!state.streaming) streamEvents();
+      [state.settings,state.status] = await Promise.all([api('/settings'),api('/status')]);await refreshIncidentData({force:true});
+      setConnected(true);renderStatus();renderSettings();if(!state.streaming)streamEvents();
     } catch(error) { setConnected(false); toast(error.message); }
   }
   async function refreshStatus(){try{state.status=await api('/status');setConnected(true);renderStatus();renderSettings();}catch(error){setConnected(false);}}
@@ -363,7 +372,7 @@
     renderMetrics();renderTrend();renderTables();
     const overviewItem=state.incidents[0]||null,overviewKey=overviewItem?`${overviewItem.incident_id}:${overviewItem.source_events?.length||0}:${latestTimestamp(overviewItem)||''}`:'empty';
     if(force||overviewKey!==state.overviewRenderKey){state.overviewRenderKey=overviewKey;renderOverviewIntel();}
-    if(state.selected){const latestSelected=state.incidents.find(item=>item.incident_id===state.selected.incident_id);if(latestSelected)state.selected=latestSelected;if(force||updatedIncidentId===state.selected.incident_id)renderInvestigation();}
+    if(state.selected){const latestSelected=[...state.incidentPageItems,...state.incidents].find(item=>item.incident_id===state.selected.incident_id);if(latestSelected)state.selected=latestSelected;if(force||updatedIncidentId===state.selected.incident_id)renderInvestigation();}
   }
   function renderStatus() {
     const collector=state.status?.collector||{}; const running=collector.state==='running',starting=collector.state==='starting',failed=collector.state==='error',permissionError=(collector.label||'').includes('권한 부족'); const banner=document.querySelector('#collector-banner');
@@ -374,7 +383,7 @@
     document.querySelector('#kpi-health').textContent=running?'보호 중':starting?'시작 중':'제한됨'; document.querySelector('#kpi-health-note').textContent=running?'Sysmon 실시간 수집 정상':failed?'수집 오류 · 설정 확인':'API 정상 · 수집 준비 중';
   }
   function renderMetrics() {
-    const high=state.incidents.filter(x=>x.verdict==='suspicious').length, review=state.incidents.filter(x=>x.verdict==='needs_review').length, benign=state.incidents.filter(x=>x.verdict==='benign').length, total=state.incidents.length;
+    const counts=state.incidentStats.verdicts||{},high=counts.suspicious||0,review=counts.needs_review||0,benign=counts.benign||0,total=state.incidentStats.total||0;
     [['#kpi-total',total],['#kpi-high',high],['#kpi-review',review],['#donut-total',total],['#legend-high',high],['#legend-review',review],['#legend-benign',benign]].forEach(([id,value])=>document.querySelector(id).textContent=value);
     const highEnd=total?high/total*100:0, reviewEnd=total?(high+review)/total*100:0;
     document.querySelector('#severity-donut').style.background=`conic-gradient(var(--red) 0 ${highEnd}%,var(--amber) ${highEnd}% ${reviewEnd}%,var(--green) ${reviewEnd}% ${total?100:0}%,#24384d ${total?100:0}% 100%)`;
@@ -382,13 +391,20 @@
   function renderTrend() {
     const trend=document.querySelector('#trend'); trend.replaceChildren(); const days=[];
     for(let offset=6;offset>=0;offset--){const date=new Date();date.setDate(date.getDate()-offset);days.push({key:date.toISOString().slice(0,10),label:`${date.getMonth()+1}/${date.getDate()}`,count:0});}
-    state.incidents.forEach(item=>{const stamp=item.source_events?.[0]?.timestamp?.slice(0,10);const day=days.find(x=>x.key===stamp);if(day)day.count++;}); const maximum=Math.max(1,...days.map(x=>x.count));
+    days.forEach(day=>day.count=state.incidentStats.daily?.[day.key]||0);const maximum=Math.max(1,...days.map(x=>x.count));
     days.forEach(day=>{const col=node('div','trend-col');const bar=node('div','trend-bar');bar.style.height=`${Math.max(3,day.count/maximum*135)}px`;bar.title=`${day.count}건`;col.append(bar,node('span','',day.label));trend.append(col);});
   }
   const SVG_NS='http://www.w3.org/2000/svg';
   function svgElement(tag,attributes={}){const element=document.createElementNS(SVG_NS,tag);Object.entries(attributes).forEach(([key,value])=>element.setAttribute(key,String(value)));return element;}
   function svgText(copy,x,y,className){const text=svgElement('text',{x,y,class:className});text.textContent=copy;return text;}
   function compactLabel(value,limit=22){const copy=String(value||'알 수 없음');return copy.length>limit?`${copy.slice(0,limit-1)}…`:copy;}
+  const graphLabelCanvas=document.createElement('canvas'),graphLabelContext=graphLabelCanvas.getContext('2d');
+  function fitGraphLabel(value,maxWidth,font){
+    const copy=String(value||'알 수 없음');graphLabelContext.font=font;if(graphLabelContext.measureText(copy).width<=maxWidth)return copy;
+    // 한글·영문·경로는 글자 수와 실제 폭이 다르므로 픽셀 폭을 이진 탐색한다.
+    // 말줄임표 자체까지 maxWidth 안에 포함해 노드 경계를 절대 넘지 않게 한다.
+    let low=0,high=copy.length;while(low<high){const middle=Math.ceil((low+high)/2),candidate=`${copy.slice(0,middle)}…`;if(graphLabelContext.measureText(candidate).width<=maxWidth)low=middle;else high=middle-1;}return `${copy.slice(0,low)}…`;
+  }
 
   function buildGraphEntities(item){
     const entities=[],edges=[],byKey=new Map();
@@ -410,12 +426,19 @@
 
   function renderAttackGraph(container,item,{interactive=false,overview=false}={}){
     container.replaceChildren();if(!item){container.append(node('div','topology-empty','분석할 사건이 없습니다.\n실시간 수집 또는 안전한 데모 사건을 시작하세요.'));return null;}
-    const {entities,edges}=buildGraphEntities(item),svg=svgElement('svg',{viewBox:'0 0 900 380',role:'img','aria-label':'드래그와 확대가 가능한 사건 엔티티 관계도'}),viewport=svgElement('g',{class:'graph-viewport'}),groups=new Map(),viewKey=`${overview?'overview':'investigation'}:${item.incident_id}`;
+    const {entities,edges}=buildGraphEntities(item),groups=new Map(),viewKey=`${overview?'overview':'investigation'}:${item.incident_id}`;
     entities.forEach(entity=>{if(!groups.has(entity.depth))groups.set(entity.depth,[]);groups.get(entity.depth).push(entity);});
-    groups.forEach((items,depth)=>items.forEach((entity,index)=>{entity.x=28+depth*175;entity.y=(index+1)*(360/(items.length+1))-30;}));
+    // 같은 단계에 IP·파일 노드가 몰려도 최소 세로 간격을 유지한다. 7개를 넘으면
+    // 다음 보조 열로 넘겨 세로로 끝없이 길어지거나 박스가 겹치는 문제를 막는다.
+    const rowsPerColumn=7,rowSpacing=76,columnSpacing=168,depthGap=24;let nextDepthX=28,usedRows=1;
+    [...groups.entries()].sort(([left],[right])=>left-right).forEach(([,items])=>{const columnCount=Math.ceil(items.length/rowsPerColumn);items.forEach((entity,index)=>{entity.x=nextDepthX+Math.floor(index/rowsPerColumn)*columnSpacing;entity.y=24+(index%rowsPerColumn)*rowSpacing;});nextDepthX+=columnCount*columnSpacing+depthGap;usedRows=Math.max(usedRows,Math.min(rowsPerColumn,items.length));});
+    // 조사 화면은 모든 노드를 한 번에 맞추며 글자를 축소하지 않는다. 읽을 수 있는
+    // 크기를 유지하고 넓은 그래프는 사용자가 이동·확대해서 탐색하도록 한다.
+    const canvasWidth=Math.max(900,nextDepthX+10),canvasHeight=Math.max(380,usedRows*rowSpacing+30),viewportWidth=interactive?560:900,svg=svgElement('svg',{viewBox:`0 0 ${viewportWidth} ${canvasHeight}`,role:'img','aria-label':'드래그와 확대가 가능한 사건 엔티티 관계도'}),viewport=svgElement('g',{class:'graph-viewport'});
+    container.style.height=`${Math.min(650,Math.max(overview?315:420,canvasHeight))}px`;
     const initialPositions=new Map(entities.map(entity=>[entity.key,{x:entity.x,y:entity.y}])),savedView=state.graphViews.get(viewKey);
     if(savedView){entities.forEach(entity=>{const saved=savedView.positions?.[entity.key];if(saved){entity.x=saved.x;entity.y=saved.y;}});}
-    const transform={x:savedView?.x||0,y:savedView?.y||0,scale:savedView?.scale||1};
+    const initialScale=interactive?1:Math.max(.72,Math.min(1,860/canvasWidth)),transform={x:savedView?.x||0,y:savedView?.y||0,scale:savedView?.scale||initialScale};
     const saveView=()=>state.graphViews.set(viewKey,{x:transform.x,y:transform.y,scale:transform.scale,positions:Object.fromEntries(entities.map(entity=>[entity.key,{x:entity.x,y:entity.y}]))});
     const applyTransform=()=>{viewport.setAttribute('transform',`translate(${transform.x} ${transform.y}) scale(${transform.scale})`);zoomOutput.value=`${Math.round(transform.scale*100)}%`;saveView();};
     const updateEdges=()=>edges.forEach(edge=>{const startX=edge.from.x+142,startY=edge.from.y+29,endX=edge.to.x,endY=edge.to.y+29,midX=(startX+endX)/2;edge.path.setAttribute('d',`M ${startX} ${startY} C ${midX} ${startY}, ${midX} ${endY}, ${endX} ${endY}`);edge.labelNode.setAttribute('x',midX-16);edge.labelNode.setAttribute('y',(startY+endY)/2-5);});
@@ -423,12 +446,14 @@
     edges.forEach(edge=>{edge.path=svgElement('path',{class:`graph-edge${edge.alert?' alert':''}`,'marker-end':`url(#arrow-${overview?'overview':'detail'})`});edge.labelNode=svgText(edge.label,0,0,'graph-edge-label');viewport.append(edge.path,edge.labelNode);});
     const colors={external:'#ff6b6b',endpoint:'#64d8cb',process:'#7aa2f7',file:'#e9b949'};
     let pointerMode=null,pointerId=null,lastPoint=null,dragOffset=null,moved=false;
-    const viewPoint=event=>{const rect=svg.getBoundingClientRect();return{x:(event.clientX-rect.left)*900/rect.width,y:(event.clientY-rect.top)*380/rect.height};};
+    // 노드가 많아 viewBox 높이가 늘어난 경우에도 포인터 좌표를 같은 SVG 좌표계로
+    // 변환해야 드래그한 노드가 커서에서 벗어나거나 다른 박스 위로 튀지 않는다.
+    const viewPoint=event=>{const rect=svg.getBoundingClientRect();return{x:(event.clientX-rect.left)*viewportWidth/rect.width,y:(event.clientY-rect.top)*canvasHeight/rect.height};};
     const activate=entity=>{entities.forEach(entry=>entry.element.classList.toggle('active',entry===entity));interactive?renderEntityInspector(entity):selectIncident(item);};
-    entities.forEach(entity=>{const group=svgElement('g',{class:'graph-node',transform:`translate(${entity.x} ${entity.y})`,tabindex:'0',role:'button','aria-label':`${entity.type} ${entity.title}`});entity.element=group;group.append(svgElement('rect',{width:142,height:58}),svgElement('circle',{cx:13,cy:14,r:5,fill:colors[entity.type]||'#8f98a2'}),svgText(entity.type.toUpperCase(),24,17,'node-type'),svgText(compactLabel(entity.title,20),12,36,'node-title'),svgText(compactLabel(entity.detail,25),12,50,'node-detail'));group.addEventListener('click',()=>{if(!moved)activate(entity);moved=false;});group.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();activate(entity);}});viewport.append(group);});
+    entities.forEach(entity=>{const group=svgElement('g',{class:'graph-node',transform:`translate(${entity.x} ${entity.y})`,tabindex:'0',role:'button','aria-label':`${entity.type} ${entity.title}`}),tooltip=svgElement('title');tooltip.textContent=[entity.title,entity.detail].filter(Boolean).join('\n');entity.element=group;group.append(tooltip,svgElement('rect',{width:142,height:58}),svgElement('circle',{cx:13,cy:14,r:5,fill:colors[entity.type]||'#8f98a2'}),svgText(entity.type.toUpperCase(),24,17,'node-type'),svgText(fitGraphLabel(entity.title,118,'600 13px Segoe UI, sans-serif'),12,36,'node-title'),svgText(fitGraphLabel(entity.detail,118,'10.5px Segoe UI, sans-serif'),12,50,'node-detail'));group.addEventListener('click',()=>{if(!moved)activate(entity);moved=false;});group.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();activate(entity);}});viewport.append(group);});
     const controls=node('div','canvas-controls'),zoomOut=node('button','','−'),zoomOutput=document.createElement('output'),zoomIn=node('button','','+'),reset=node('button','','↺');zoomOut.title='축소';zoomIn.title='확대';reset.title='위치와 배율 초기화';controls.append(zoomOut,zoomOutput,zoomIn,reset);
-    const zoomAt=(factor,focus={x:450,y:190})=>{const next=Math.min(2.4,Math.max(.45,transform.scale*factor)),ratio=next/transform.scale;transform.x=focus.x-(focus.x-transform.x)*ratio;transform.y=focus.y-(focus.y-transform.y)*ratio;transform.scale=next;applyTransform();};
-    const resetView=()=>{transform.x=0;transform.y=0;transform.scale=1;entities.forEach(entity=>{const initial=initialPositions.get(entity.key);entity.x=initial.x;entity.y=initial.y;entity.element.setAttribute('transform',`translate(${entity.x} ${entity.y})`);});updateEdges();applyTransform();};
+    const zoomAt=(factor,focus={x:viewportWidth/2,y:canvasHeight/2})=>{const next=Math.min(2.4,Math.max(.45,transform.scale*factor)),ratio=next/transform.scale;transform.x=focus.x-(focus.x-transform.x)*ratio;transform.y=focus.y-(focus.y-transform.y)*ratio;transform.scale=next;applyTransform();};
+    const resetView=()=>{transform.x=0;transform.y=0;transform.scale=initialScale;entities.forEach(entity=>{const initial=initialPositions.get(entity.key);entity.x=initial.x;entity.y=initial.y;entity.element.setAttribute('transform',`translate(${entity.x} ${entity.y})`);});updateEdges();applyTransform();};
     zoomOut.onclick=()=>zoomAt(.82);zoomIn.onclick=()=>zoomAt(1.22);reset.onclick=resetView;
     svg.addEventListener('wheel',event=>{event.preventDefault();zoomAt(event.deltaY<0?1.12:.89,viewPoint(event));},{passive:false});
     svg.addEventListener('pointerdown',event=>{const targetNode=event.target.closest('.graph-node');pointerId=event.pointerId;lastPoint=viewPoint(event);moved=false;svg.setPointerCapture(pointerId);if(targetNode){const entity=entities.find(entry=>entry.element===targetNode);pointerMode=entity;const world={x:(lastPoint.x-transform.x)/transform.scale,y:(lastPoint.y-transform.y)/transform.scale};dragOffset={x:world.x-entity.x,y:world.y-entity.y};targetNode.classList.add('dragging');}else{pointerMode='pan';container.classList.add('is-panning');}});
@@ -471,15 +496,12 @@
   function incidentPagination(totalItems) {
     const pageCount=Math.max(1,Math.ceil(totalItems/state.incidentPageSize));state.incidentPage=Math.min(state.incidentPage,pageCount);
     const footer=node('div','pagination'),start=totalItems?(state.incidentPage-1)*state.incidentPageSize+1:0,end=Math.min(totalItems,state.incidentPage*state.incidentPageSize),summary=node('span','',`총 ${totalItems}건 · ${start}-${end}`),controls=node('div','pagination-controls'),sizeLabel=node('span','','페이지당'),sizeSelect=node('select');
-    [50,100].forEach(size=>{const option=node('option','',`${size}건`);option.value=String(size);option.selected=size===state.incidentPageSize;sizeSelect.append(option);});sizeSelect.setAttribute('aria-label','페이지당 사건 수');sizeSelect.onchange=()=>{state.incidentPageSize=Number(sizeSelect.value);state.incidentPage=1;renderTables();};
-    const previous=node('button','','이전'),position=node('strong','',`${state.incidentPage} / ${pageCount}`),next=node('button','','다음');previous.disabled=state.incidentPage<=1;next.disabled=state.incidentPage>=pageCount;previous.onclick=()=>{state.incidentPage--;renderTables();};next.onclick=()=>{state.incidentPage++;renderTables();};controls.append(sizeLabel,sizeSelect,previous,position,next);footer.append(summary,controls);return footer;
+    [50,100].forEach(size=>{const option=node('option','',`${size}건`);option.value=String(size);option.selected=size===state.incidentPageSize;sizeSelect.append(option);});sizeSelect.setAttribute('aria-label','페이지당 사건 수');sizeSelect.onchange=async()=>{state.incidentPageSize=Number(sizeSelect.value);state.incidentPage=1;await refreshIncidentData();};
+    const previous=node('button','','이전'),position=node('strong','',`${state.incidentPage} / ${pageCount}`),next=node('button','','다음');previous.disabled=state.incidentPage<=1;next.disabled=state.incidentPage>=pageCount;previous.onclick=async()=>{state.incidentPage--;await refreshIncidentData();};next.onclick=async()=>{state.incidentPage++;await refreshIncidentData();};controls.append(sizeLabel,sizeSelect,previous,position,next);footer.append(summary,controls);return footer;
   }
   function renderTables() {
     const overview=document.querySelector('#overview-table');overview.replaceChildren(incidentTable(state.incidents,true));
-    const query=document.querySelector('#incident-search').value.trim().toLowerCase(), verdict=document.querySelector('#verdict-filter').value;
-    const filtered=state.incidents.filter(item=>(verdict==='all'||item.verdict===verdict)&&(!query||JSON.stringify(item).toLowerCase().includes(query)));
-    const pageCount=Math.max(1,Math.ceil(filtered.length/state.incidentPageSize));state.incidentPage=Math.min(state.incidentPage,pageCount);const start=(state.incidentPage-1)*state.incidentPageSize,pageItems=filtered.slice(start,start+state.incidentPageSize);
-    const full=document.querySelector('#incident-table');full.replaceChildren(incidentTable(pageItems,false),incidentPagination(filtered.length)); bindDemoButtons();
+    const full=document.querySelector('#incident-table');full.replaceChildren(incidentTable(state.incidentPageItems,false),incidentPagination(state.incidentStats.filtered_total||0));bindDemoButtons();
   }
   function renderSettings() {
     if(!state.settings||!state.status)return; const collectorStatus=state.status.collector; const collector=document.querySelector('#collector-settings');const running=collectorStatus.state==='running',permissionError=(collectorStatus.label||'').includes('권한 부족');const userAction=running?'필요 없음 · 자동 수집 중':permissionError?'개요 화면의 수집 권한 설정 버튼 사용':'Sysmon 설치 및 로그 상태 확인';collector.replaceChildren(settingRow('상태',collectorStatus.label||collectorStatus.state),settingRow('수집 소스',(collectorStatus.sources||[]).join(', ')||'연결된 소스 없음'),settingRow('처리 이벤트',`${collectorStatus.processed_events||0}개`),settingRow('마지막 수집',collectorStatus.last_event_at?formatTime(collectorStatus.last_event_at):'아직 없음'),settingRow('사용자 조치',userAction));
@@ -510,9 +532,10 @@
   }
   function renderInvestigationSide(item){const validation=document.querySelector('#validation-list');validation.replaceChildren(healthRow('검증 결과',item.validation.passed?'통과':'확인 필요',item.validation.passed?'green':'amber'),healthRow('재검토 횟수',item.validation.review_count,'blue'),healthRow('검증 오류',item.validation.errors.length,'red'));const sources=[...new Set(item.source_events.map(x=>x.source))];const source=document.querySelector('#source-list');source.replaceChildren(...sources.map(value=>healthRow(value,'연결됨','green')),healthRow('이벤트',item.source_events.length,'blue'));renderGeoMap(document.querySelector('#investigation-geo'),document.querySelector('#investigation-origin'),item);}
   function healthRow(label,value,color){const row=node('div','health-row');const dot=node('i','legend-dot');dot.style.background=`var(--${color})`;row.append(dot,node('span','',label),node('strong','',value));return row;}
-  async function createDemo(){try{toast('안전한 데모 사건을 분석하고 있습니다…');const report=await api('/demo/incidents',{method:'POST'});/* API 응답보다 실시간 스트림이 먼저 도착해도 같은 사건 ID는 한 번만 유지한다. */state.incidents=[report,...state.incidents.filter(item=>item.incident_id!==report.incident_id)];renderIncidentViews({updatedIncidentId:report.incident_id});selectIncident(report);toast('데모 사건이 생성되었습니다. 실제 악성 코드는 실행되지 않았습니다.');}catch(error){toast(error.message);}}
+  async function createDemo(){try{toast('안전한 데모 사건을 분석하고 있습니다…');const report=await api('/demo/incidents',{method:'POST'});await refreshIncidentData({updatedIncidentId:report.incident_id});selectIncident(report);toast('데모 사건이 생성되었습니다. 실제 악성 코드는 실행되지 않았습니다.');}catch(error){toast(error.message);}}
   async function configureCollector(){if(!confirm('Windows 관리자 권한으로 Sysmon 수집 권한을 설정할까요? UAC 확인창이 표시됩니다.'))return;try{await api('/collector/configure',{method:'POST'});toast('Windows UAC 확인창에서 허용을 선택하세요. 설정 후 수집기가 자동으로 다시 연결됩니다.');}catch(error){toast(error.message);}}
-  async function streamEvents(){state.streaming=true;const controller=new AbortController();state.streamController=controller;try{const response=await fetch('/events',{headers:authHeaders(),signal:controller.signal});if(!response.ok||!response.body)return;const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='';while(true){const{value,done}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});const messages=buffer.split('\n\n');buffer=messages.pop();messages.forEach(message=>{const line=message.split('\n').find(x=>x.startsWith('data:'));if(!line)return;const item=JSON.parse(line.slice(5));state.incidents=[item,...state.incidents.filter(x=>x.incident_id!==item.incident_id)];renderIncidentViews({updatedIncidentId:item.incident_id});});}}catch(error){if(error.name!=='AbortError')console.warn('실시간 사건 연결이 종료되었습니다.',error);}finally{if(state.streamController===controller)state.streamController=null;state.streaming=false;}}
+  function scheduleIncidentRefresh(item){if(state.selected?.incident_id===item.incident_id)state.selected=item;clearTimeout(state.incidentRefreshTimer);state.incidentRefreshTimer=setTimeout(()=>refreshIncidentData({updatedIncidentId:item.incident_id}).catch(error=>console.warn('사건 화면 갱신 실패',error)),250);}
+  async function streamEvents(){state.streaming=true;const controller=new AbortController();state.streamController=controller;try{const response=await fetch('/events',{headers:authHeaders(),signal:controller.signal});if(!response.ok||!response.body)return;const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='';while(true){const{value,done}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});const messages=buffer.split('\n\n');buffer=messages.pop();messages.forEach(message=>{const line=message.split('\n').find(x=>x.startsWith('data:'));if(!line)return;scheduleIncidentRefresh(JSON.parse(line.slice(5)));});}}catch(error){if(error.name!=='AbortError')console.warn('실시간 사건 연결이 종료되었습니다.',error);}finally{if(state.streamController===controller)state.streamController=null;state.streaming=false;}}
   function showAuth(){document.querySelector('#auth-modal').classList.add('open');}
   async function retryAutomaticConnection(){if(!launchToken){toast('이 탭을 닫고 WeaveXDR.exe를 다시 실행하세요.');return;}try{await establishSession(launchToken);document.querySelector('#auth-modal').classList.remove('open');await loadAll();toast('자동 보안 세션을 연결했습니다.');}catch(error){toast(error.message);}}
   function toast(message){const box=document.querySelector('#toast');box.textContent=message;box.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>box.classList.remove('show'),3500);}
@@ -536,11 +559,12 @@
   function bindDemoButtons(){document.querySelectorAll('[data-demo]').forEach(button=>button.onclick=createDemo);}
 
   document.querySelectorAll('[data-nav],[data-go]').forEach(button=>button.onclick=()=>navigate(button.dataset.nav||button.dataset.go));
-  document.querySelector('#refresh').onclick=loadAll;document.querySelector('#incident-search').oninput=()=>{state.incidentPage=1;renderTables();};document.querySelector('#verdict-filter').onchange=()=>{state.incidentPage=1;renderTables();};
+  function scheduleFilteredRefresh(){state.incidentPage=1;clearTimeout(state.filterTimer);state.filterTimer=setTimeout(()=>refreshIncidentData().catch(error=>toast(error.message)),200);}
+  document.querySelector('#refresh').onclick=loadAll;document.querySelector('#incident-search').oninput=scheduleFilteredRefresh;document.querySelector('#verdict-filter').onchange=scheduleFilteredRefresh;
   document.querySelector('#collector-action').onclick=()=>document.querySelector('#collector-action').dataset.mode==='configure'?configureCollector():navigate('settings');
   document.querySelector('#investigation-tabs').onclick=event=>{const button=event.target.closest('[data-tab]');if(!button)return;state.tab=button.dataset.tab;renderInvestigation();};
   document.querySelector('#auth-retry').onclick=retryAutomaticConnection;document.querySelector('#local-api-address').textContent=location.host;
-  document.querySelector('#shutdown').onclick=async()=>{if(!confirm('WeaveXDR 서버를 종료할까요? 브라우저 탭도 더 이상 데이터를 불러올 수 없습니다.'))return;try{clearInterval(state.statusTimer);state.statusTimer=null;state.streamController?.abort();await api('/shutdown',{method:'POST'});setConnected(false);toast('WeaveXDR를 종료했습니다. 이 탭을 닫아도 됩니다.');setTimeout(()=>document.body.replaceChildren(node('div','empty','WeaveXDR가 종료되었습니다. 이 창을 닫아 주세요.')),700);}catch(error){if(!state.statusTimer)state.statusTimer=setInterval(refreshStatus,3000);toast(error.message);}};
+  document.querySelector('#shutdown').onclick=async()=>{if(!confirm('WeaveXDR 서버를 종료할까요? 브라우저 탭도 더 이상 데이터를 불러올 수 없습니다.'))return;try{clearInterval(state.statusTimer);clearTimeout(state.incidentRefreshTimer);clearTimeout(state.filterTimer);state.statusTimer=null;state.incidentRefreshTimer=null;state.filterTimer=null;state.streamController?.abort();await api('/shutdown',{method:'POST'});setConnected(false);toast('WeaveXDR를 종료했습니다. 이 탭을 닫아도 됩니다.');setTimeout(()=>document.body.replaceChildren(node('div','empty','WeaveXDR가 종료되었습니다. 이 창을 닫아 주세요.')),700);}catch(error){if(!state.statusTimer)state.statusTimer=setInterval(refreshStatus,3000);toast(error.message);}};
   window.addEventListener('beforeunload',()=>state.streamController?.abort());
   async function bootstrap(){renderTrend();if(launchToken){try{await establishSession(launchToken);}catch(error){showAuth();toast(error.message);return;}}await loadAll();state.statusTimer=setInterval(refreshStatus,3000);}
   bindDemoButtons(); bootstrap();

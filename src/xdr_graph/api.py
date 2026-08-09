@@ -184,9 +184,23 @@ def create_app(
         return {"status": "connected"}
 
     @app.get("/incidents", response_model=list[IncidentReport], dependencies=protected)
-    def list_incidents(limit: int = 100, offset: int = 0):
+    def list_incidents(
+        limit: int = 100,
+        offset: int = 0,
+        verdict: str | None = None,
+        query: str | None = None,
+    ):
         try:
-            return runtime.event_store.list_incident_reports(limit=limit, offset=offset)
+            return runtime.event_store.list_incident_reports(
+                limit=limit, offset=offset, verdict=verdict, query=query
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+
+    @app.get("/incidents/stats", dependencies=protected)
+    def incident_stats(verdict: str | None = None, query: str | None = None):
+        try:
+            return runtime.event_store.incident_stats(verdict=verdict, query=query)
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
 

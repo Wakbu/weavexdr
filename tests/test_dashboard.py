@@ -86,7 +86,7 @@ def test_dashboard_and_settings_are_available_without_rendering_event_html():
         assert "graphViews: new Map()" in dashboard.text
         assert "addEventListener('wheel'" in dashboard.text
         assert "addEventListener('pointerdown'" in dashboard.text
-        assert "renderIncidentViews({updatedIncidentId:item.incident_id})" in dashboard.text
+        assert "scheduleIncidentRefresh(JSON.parse(line.slice(5)))" in dashboard.text
         assert 'id="mitre-strip"' in dashboard.text
         assert "graph-search" in dashboard.text
         assert 'id="settings-token"' not in dashboard.text
@@ -96,9 +96,14 @@ def test_dashboard_and_settings_are_available_without_rendering_event_html():
         assert "location.host" in dashboard.text
         assert "incidentPageSize: 50" in dashboard.text
         assert "[50,100].forEach" in dashboard.text
-        assert "incidentPagination(filtered.length)" in dashboard.text
         assert ".graph-node:focus-visible rect" in dashboard.text
-        assert "state.incidents.filter(item=>item.incident_id!==report.incident_id)" in dashboard.text
+        assert "api('/incidents?limit=5')" in dashboard.text
+        assert "api(`/incidents/stats?${filterParams}`)" in dashboard.text
+        assert "incidentPagination(state.incidentStats.filtered_total||0)" in dashboard.text
+        assert "scheduleIncidentRefresh" in dashboard.text
+        assert "*viewportWidth/rect.width" in dashboard.text
+        assert "initialScale=interactive?1" in dashboard.text
+        assert "transform.scale=initialScale" in dashboard.text
         assert "분류되지 않은 보안 사건" in dashboard.text
 
         assert client.get("/settings").status_code == 401

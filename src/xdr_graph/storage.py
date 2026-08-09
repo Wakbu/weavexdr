@@ -151,21 +151,81 @@ class SQLiteEventStore:
             ).fetchone()
         return IncidentReport.model_validate_json(row["report_json"]) if row else None
 
+    @staticmethod
+    def _incident_filter_clause(
+        verdict: str | None, query: str | None
+    ) -> tuple[str, list[object]]:
+        if verdict not in (None, "suspicious", "needs_review", "benign"):
+            raise ValueError("invalid incident verdict filter")
+        where_parts: list[str] = []
+        parameters: list[object] = []
+        if verdict:
+            where_parts.append("verdict = ?")
+            parameters.append(verdict)
+        if query and query.strip():
+            where_parts.append("(incident_id LIKE ? OR report_json LIKE ?)")
+            search_pattern = f"%{query.strip()}%"
+            parameters.extend((search_pattern, search_pattern))
+        # 동적으로 조합하는 부분은 위의 고정 SQL 조각뿐이다. 사용자 검색어와
+        # 판정 값은 항상 매개변수로 전달해 SQL 문장으로 해석되지 않게 한다.
+        where_sql = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
+        return where_sql, parameters
+
     def list_incident_reports(
-        self, *, limit: int = 100, offset: int = 0
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+        verdict: str | None = None,
+        query: str | None = None,
     ) -> list[IncidentReport]:
         if limit < 1 or limit > 500 or offset < 0:
             raise ValueError("invalid incident pagination")
+        where_sql, parameters = self._incident_filter_clause(verdict, query)
         with self._lock:
             rows = self._connection.execute(
-                """
+                f"""
                 SELECT report_json FROM incidents
+                {where_sql}
                 ORDER BY updated_at DESC, incident_id
                 LIMIT ? OFFSET ?
                 """,
-                (limit, offset),
+                (*parameters, limit, offset),
             ).fetchall()
         return [IncidentReport.model_validate_json(row["report_json"]) for row in rows]
+
+    def incident_stats(
+        self, *, verdict: str | None = None, query: str | None = None
+    ) -> dict[str, object]:
+        """전체 KPI와 현재 필터의 정확한 사건 수를 반환한다."""
+
+        where_sql, parameters = self._incident_filter_clause(verdict, query)
+        with self._lock:
+            total = self._connection.execute(
+                "SELECT COUNT(*) AS count FROM incidents"
+            ).fetchone()["count"]
+            verdict_rows = self._connection.execute(
+                "SELECT verdict, COUNT(*) AS count FROM incidents GROUP BY verdict"
+            ).fetchall()
+            filtered_total = self._connection.execute(
+                f"SELECT COUNT(*) AS count FROM incidents {where_sql}", parameters
+            ).fetchone()["count"]
+            trend_rows = self._connection.execute(
+                """
+                SELECT substr(updated_at, 1, 10) AS day, COUNT(*) AS count
+                FROM incidents
+                WHERE updated_at >= datetime('now', '-7 days')
+                GROUP BY substr(updated_at, 1, 10)
+                """
+            ).fetchall()
+        verdict_counts = {"suspicious": 0, "needs_review": 0, "benign": 0}
+        verdict_counts.update({row["verdict"]: row["count"] for row in verdict_rows})
+        return {
+            "total": total,
+            "filtered_total": filtered_total,
+            "verdicts": verdict_counts,
+            "daily": {row["day"]: row["count"] for row in trend_rows},
+        }
 
     def save_processed_batch(
         self,

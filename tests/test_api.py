@@ -42,6 +42,14 @@ def test_health_is_public_but_incidents_require_a_valid_token():
         response = client.get("/incidents", headers=AUTH)
         assert response.status_code == 200
         assert response.json()[0]["incident_id"] == "incident-001"
+        stats = client.get("/incidents/stats", headers=AUTH)
+        assert stats.status_code == 200
+        assert stats.json()["total"] == 1
+        assert stats.json()["filtered_total"] == 1
+        assert stats.json()["verdicts"]["suspicious"] == 1
+        assert client.get(
+            "/incidents/stats?query=does-not-exist", headers=AUTH
+        ).json()["filtered_total"] == 0
     finally:
         store.close()
 
@@ -115,6 +123,12 @@ def test_invalid_pagination_and_command_schema_are_rejected():
     client, store = build_client()
     try:
         assert client.get("/incidents?limit=9999", headers=AUTH).status_code == 422
+        assert client.get(
+            "/incidents?verdict=unknown", headers=AUTH
+        ).status_code == 422
+        assert client.get(
+            "/incidents/stats?verdict=unknown", headers=AUTH
+        ).status_code == 422
         response = client.post(
             "/responses/preview",
             json={"command_id": "bad", "action": "delete_everything"},

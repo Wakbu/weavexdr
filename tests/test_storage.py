@@ -61,6 +61,37 @@ def test_duplicate_only_batch_reuses_the_last_report_without_analysis():
         assert store.stats().batches == 2
 
 
+def test_incident_listing_and_stats_apply_server_side_filters():
+    with SQLiteEventStore(":memory:") as store:
+        service = PersistentIngestionService(store)
+        service.submit(make_batch("batch-filter", [0, 1]))
+
+        stats = store.incident_stats(query="powershell")
+        assert stats["total"] == 1
+        assert stats["filtered_total"] == 1
+        assert stats["verdicts"]["suspicious"] == 1
+        assert store.incident_stats(query="missing")["filtered_total"] == 0
+        assert len(store.list_incident_reports(limit=50, query="powershell")) == 1
+        assert store.list_incident_reports(limit=50, query="missing") == []
+        assert store.list_incident_reports(limit=50, verdict="benign") == []
+
+
+def test_incident_stats_are_not_truncated_to_the_default_list_limit():
+    with SQLiteEventStore(":memory:") as store:
+        service = PersistentIngestionService(store)
+        for incident_number in range(105):
+            batch = make_batch(f"batch-{incident_number}", [0]).model_copy(
+                update={"incident_id": f"incident-{incident_number:03d}"}
+            )
+            # 같은 샘플 이벤트 ID는 중복으로 처리되므로 사건마다 고유 ID를 부여한다.
+            batch.events[0].event_id = f"event-{incident_number:03d}"
+            service.submit(batch)
+
+        assert len(store.list_incident_reports()) == 100
+        assert store.incident_stats()["total"] == 105
+        assert store.incident_stats()["filtered_total"] == 105
+
+
 def test_event_buffer_enforces_capacity_and_flushes_oldest_batch_first():
     class RecordingSink:
         def __init__(self) -> None:
