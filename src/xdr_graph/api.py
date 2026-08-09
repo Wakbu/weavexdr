@@ -4,10 +4,13 @@ import hmac
 import logging
 import os
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from queue import Empty
 from threading import RLock
+from uuid import uuid4
 
 import uvicorn
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
@@ -16,6 +19,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, TypeAdapter
 
 from xdr_graph.models import IncidentReport
+from xdr_graph.ingestion import NormalizedEventBatch
 from xdr_graph.response import (
     ApprovalRecord,
     ApprovalService,
@@ -24,7 +28,7 @@ from xdr_graph.response import (
     ResponseCommand,
 )
 from xdr_graph.response_execution import ActualResponseService, ExecutionResult
-from xdr_graph.storage import SQLiteEventStore
+from xdr_graph.storage import PersistentIngestionService, SQLiteEventStore
 from xdr_graph.events import IncidentEventBroker
 from xdr_graph.allowlist import load_default_allowlist_engine
 from xdr_graph.detection import load_default_detection_engine
@@ -71,6 +75,14 @@ class ApiRuntime:
     model_status: dict[str, object] = field(
         default_factory=lambda: {"provider": "rule_based", "available": True}
     )
+    collector_status: dict[str, object] = field(
+        default_factory=lambda: {
+            "state": "not_configured",
+            "label": "실시간 수집기 미구성",
+            "sources": [],
+        }
+    )
+    shutdown_callback: Callable[[], None] | None = None
     commands: dict[str, ResponseCommand] = field(default_factory=dict)
     previews: dict[str, DryRunResult] = field(default_factory=dict)
     lock: RLock = field(default_factory=RLock)
@@ -159,6 +171,88 @@ def create_app(
             "allowlist_entries": [entry.model_dump(mode="json") for entry in allowlist.entries],
             "model": runtime.model_status,
         }
+
+    @app.get("/status", dependencies=protected)
+    def runtime_status():
+        return {
+            "api": {"state": "connected", "label": "로컬 API 정상"},
+            "collector": runtime.collector_status,
+            "model": runtime.model_status,
+            "active_response": runtime.actual_response_service is not None,
+        }
+
+    @app.post(
+        "/demo/incidents",
+        response_model=IncidentReport,
+        dependencies=protected,
+    )
+    def create_demo_incident():
+        # 실제 악성 파일이나 명령을 실행하지 않고 정규화 이벤트만 만들어 전체
+        # 탐지·상관분석·저장·화면 흐름을 사용자가 안전하게 체험하게 한다.
+        now = datetime.now(UTC)
+        demo_key = uuid4().hex[:12]
+        process_start = now.isoformat()
+        batch = NormalizedEventBatch.model_validate(
+            {
+                "schema_version": "1.0",
+                "batch_id": f"demo-batch-{demo_key}",
+                "incident_id": f"demo-incident-{demo_key}",
+                "collector_id": "weavexdr-safe-demo",
+                "received_at": (now + timedelta(seconds=4)).isoformat(),
+                "events": [
+                    {
+                        "event_id": f"demo-process-{demo_key}",
+                        "event_type": "process_start",
+                        "timestamp": process_start,
+                        "host_id": "local-demo-host",
+                        "source": "sample",
+                        "process_name": "powershell.exe",
+                        "process_id": 4242,
+                        "process_start_time": process_start,
+                        "parent_process": "WINWORD.EXE",
+                        "command_line": "powershell.exe -enc SAFE_DEMO_ONLY",
+                    },
+                    {
+                        "event_id": f"demo-file-{demo_key}",
+                        "event_type": "file_create",
+                        "timestamp": (now + timedelta(seconds=2)).isoformat(),
+                        "host_id": "local-demo-host",
+                        "source": "sample",
+                        "process_name": "powershell.exe",
+                        "process_id": 4242,
+                        "process_start_time": process_start,
+                        "file_path": r"C:\Users\Demo\AppData\Local\Temp\update.exe",
+                    },
+                    {
+                        "event_id": f"demo-network-{demo_key}",
+                        "event_type": "network_connect",
+                        "timestamp": (now + timedelta(seconds=3)).isoformat(),
+                        "host_id": "local-demo-host",
+                        "source": "sample",
+                        "process_name": "powershell.exe",
+                        "process_id": 4242,
+                        "process_start_time": process_start,
+                        "destination_ip": "8.8.8.8",
+                        "destination_port": 443,
+                        "protocol": "tcp",
+                    },
+                ],
+            }
+        )
+        receipt = PersistentIngestionService(
+            runtime.event_store,
+            event_publisher=runtime.event_broker,
+        ).submit(batch)
+        return receipt.report
+
+    @app.post("/shutdown", dependencies=protected)
+    def shutdown():
+        if runtime.shutdown_callback is None:
+            raise HTTPException(status_code=503, detail="desktop shutdown is unavailable")
+        # Uvicorn은 현재 응답을 마친 뒤 should_exit를 확인한다. 번들 환경에서
+        # background task 실행이 늦어지는 경우를 피하려고 플래그를 즉시 설정한다.
+        runtime.shutdown_callback()
+        return {"status": "shutting_down"}
 
     @app.get("/events", dependencies=protected)
     def stream_events():

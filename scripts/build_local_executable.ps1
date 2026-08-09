@@ -6,29 +6,46 @@ $temporaryOutput = Join-Path $workRoot "output"
 $targetExecutable = Join-Path $projectRoot "WeaveXDR.exe"
 if (-not (Test-Path -LiteralPath $pythonPath -PathType Leaf)) { throw "Project virtual environment was not found." }
 
+# 이전 빌드 산출물이 남아 있으면 PyInstaller 실패를 새 결과로 오인할 수 있다.
+# 삭제 범위는 검증된 build/pyinstaller/output 하위로만 제한하고 현재 루트 EXE는 보존한다.
+if (Test-Path -LiteralPath $temporaryOutput) {
+    Remove-Item -LiteralPath $temporaryOutput -Recurse -Force
+}
+
 # Uvicorn과 AnyIO는 실행 중 하위 모듈을 동적 import하므로 전체 패키지를 포함해야 한다.
-& $pythonPath -m PyInstaller `
-    --noconfirm `
-    --clean `
-    --onefile `
-    --windowed `
-    --name WeaveXDR `
-    --paths (Join-Path $projectRoot "src") `
-    --add-data "$(Join-Path $projectRoot 'config');xdr_graph/config" `
-    --add-data "$(Join-Path $projectRoot 'src\xdr_graph\static');xdr_graph/static" `
-    --collect-all langgraph `
-    --collect-all charset_normalizer `
-    --collect-all uvicorn `
-    --collect-all anyio `
-    --distpath $temporaryOutput `
-    --workpath (Join-Path $workRoot "work") `
-    --specpath (Join-Path $workRoot "spec") `
-    (Join-Path $PSScriptRoot "weavexdr_launcher.py")
+Push-Location -LiteralPath $projectRoot
+try {
+    & $pythonPath -m PyInstaller `
+        --noconfirm `
+        --clean `
+        --onefile `
+        --windowed `
+        --name WeaveXDR `
+        --paths (Join-Path $projectRoot "src") `
+        --add-data "$(Join-Path $projectRoot 'config');xdr_graph/config" `
+        --add-data "$(Join-Path $projectRoot 'src\xdr_graph\static');xdr_graph/static" `
+        --collect-all langgraph `
+        --collect-all charset_normalizer `
+        --collect-all uvicorn `
+        --collect-all anyio `
+        --distpath $temporaryOutput `
+        --workpath (Join-Path $workRoot "work") `
+        --specpath (Join-Path $workRoot "spec") `
+        (Join-Path $PSScriptRoot "weavexdr_launcher.py")
+    $pyInstallerExitCode = $LASTEXITCODE
+}
+finally {
+    Pop-Location
+}
+if ($pyInstallerExitCode -ne 0) { throw "PyInstaller build failed with exit code $pyInstallerExitCode." }
 
 $builtExecutable = Join-Path $temporaryOutput "WeaveXDR.exe"
 if (-not (Test-Path -LiteralPath $builtExecutable -PathType Leaf)) { throw "Executable build did not produce WeaveXDR.exe." }
 # 빌드가 끝까지 성공한 뒤에만 기존 실행본을 교체해 실패한 빌드가 현재 버전을 지우지 못하게 한다.
 Copy-Item -LiteralPath $builtExecutable -Destination $targetExecutable -Force
+$previousSmokeTest = $env:WEAVEXDR_SMOKE_TEST
+$previousNoBrowser = $env:WEAVEXDR_NO_BROWSER
+$previousApiToken = $env:WEAVEXDR_API_TOKEN
 $env:WEAVEXDR_SMOKE_TEST = "1"
 $env:WEAVEXDR_NO_BROWSER = "1"
 try {
@@ -45,8 +62,62 @@ try {
     }
 }
 finally {
-    Remove-Item Env:WEAVEXDR_SMOKE_TEST -ErrorAction SilentlyContinue
-    Remove-Item Env:WEAVEXDR_NO_BROWSER -ErrorAction SilentlyContinue
+    $env:WEAVEXDR_SMOKE_TEST = $previousSmokeTest
+    $env:WEAVEXDR_NO_BROWSER = $previousNoBrowser
+}
+
+# 스모크 모드는 내부 서버 모듈만 확인하므로, 일반 실행 모드도 별도로 띄워
+# 인증 API와 종료 요청이 실제 EXE 프로세스까지 정상적으로 닫는지 검증한다.
+$verificationToken = "weavexdr-local-build-verification-token"
+$env:WEAVEXDR_API_TOKEN = $verificationToken
+$env:WEAVEXDR_NO_BROWSER = "1"
+$runtimeProcess = $null
+$serverProcess = $null
+try {
+    if (Get-NetTCPConnection -LocalPort 8765 -State Listen -ErrorAction SilentlyContinue) {
+        throw "Port 8765 is already in use. Close the running WeaveXDR instance before building."
+    }
+    $runtimeInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $runtimeInfo.FileName = $targetExecutable
+    $runtimeInfo.UseShellExecute = $false
+    $runtimeInfo.CreateNoWindow = $true
+    $runtimeProcess = [System.Diagnostics.Process]::Start($runtimeInfo)
+    $headers = @{ Authorization = "Bearer $verificationToken" }
+    $deadline = [DateTime]::UtcNow.AddSeconds(20)
+    do {
+        try {
+            $health = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:8765/health" -TimeoutSec 2
+        }
+        catch {
+            $health = $null
+            Start-Sleep -Milliseconds 200
+        }
+    } while (-not $health -and [DateTime]::UtcNow -lt $deadline)
+    if (-not $health -or $health.StatusCode -ne 200) { throw "Normal-mode executable health check failed." }
+    # one-file PyInstaller는 부트로더와 실제 서버 프로세스가 다를 수 있으므로
+    # Start() 반환값이 아니라 8765 포트를 소유한 프로세스를 종료 검증 대상으로 삼는다.
+    $serverConnection = Get-NetTCPConnection -LocalPort 8765 -State Listen -ErrorAction Stop | Select-Object -First 1
+    $serverProcess = Get-Process -Id $serverConnection.OwningProcess -ErrorAction Stop
+    if ($serverProcess.Path -ne (Get-Item -LiteralPath $targetExecutable).FullName) {
+        throw "Port 8765 is not owned by the packaged WeaveXDR executable."
+    }
+    $dashboard = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:8765/dashboard" -TimeoutSec 3
+    if ($dashboard.StatusCode -ne 200 -or $dashboard.Content -notmatch 'data-nav="overview"') {
+        throw "Normal-mode executable dashboard check failed."
+    }
+    $status = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:8765/status" -Headers $headers -TimeoutSec 3
+    if ($status.StatusCode -ne 200) { throw "Authenticated status check failed." }
+    $shutdown = Invoke-WebRequest -UseBasicParsing -Method Post -Uri "http://127.0.0.1:8765/shutdown" -Headers $headers -TimeoutSec 3
+    if ($shutdown.StatusCode -ne 200) { throw "Executable shutdown request failed." }
+    if (-not $serverProcess.WaitForExit(10000)) { throw "Executable did not stop after shutdown request." }
+}
+finally {
+    # 이 스크립트가 시작했고 경로까지 확인한 서버만 실패 정리 대상으로 제한한다.
+    if ($serverProcess -and -not $serverProcess.HasExited -and $serverProcess.Path -eq (Get-Item -LiteralPath $targetExecutable).FullName) {
+        $serverProcess.Kill()
+    }
+    $env:WEAVEXDR_API_TOKEN = $previousApiToken
+    $env:WEAVEXDR_NO_BROWSER = $previousNoBrowser
 }
 $checksum = (Get-FileHash -LiteralPath $targetExecutable -Algorithm SHA256).Hash.ToLowerInvariant()
 Write-Host "Local executable replaced / 로컬 실행 파일 교체: $targetExecutable"

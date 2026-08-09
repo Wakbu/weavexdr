@@ -72,7 +72,12 @@ def main() -> None:
 
     # 실행할 때마다 새 토큰을 만들어 파일이나 실행 인자에 비밀이 남지 않게 한다.
     # URL fragment는 HTTP 요청에 포함되지 않으며 대시보드가 읽은 즉시 주소에서 제거한다.
-    api_token = secrets.token_urlsafe(32)
+    configured_token = os.environ.get("WEAVEXDR_API_TOKEN", "").strip()
+    # 자동화 검사와 고정 토큰이 필요한 운영 환경에서는 환경 변수만 허용한다.
+    # 짧은 값은 추측 공격에 취약하므로 기존 API 정책과 동일하게 32자 이상을 요구한다.
+    if configured_token and len(configured_token) < 32:
+        raise ValueError("WEAVEXDR_API_TOKEN must contain at least 32 characters")
+    api_token = configured_token or secrets.token_urlsafe(32)
     store = SQLiteEventStore(data_root / "weavexdr.db")
     runtime = ApiRuntime(
         event_store=store,
@@ -93,7 +98,14 @@ def main() -> None:
     if os.environ.get("WEAVEXDR_NO_BROWSER") != "1":
         threading.Timer(1.0, lambda: webbrowser.open(dashboard_url)).start()
     logger.info("desktop runtime started")
-    build_embedded_server(app, port=8765).run()
+    server = build_embedded_server(app, port=8765)
+    runtime.shutdown_callback = lambda: setattr(server, "should_exit", True)
+    try:
+        server.run()
+    finally:
+        # 종료 버튼과 예외 종료 모두 DB 핸들을 닫아 업데이트·백업 시 파일 잠금이 남지 않게 한다.
+        store.close()
+        logger.info("desktop runtime stopped")
 
 
 if __name__ == "__main__":

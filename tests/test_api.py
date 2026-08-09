@@ -1,4 +1,5 @@
 import json
+from threading import Event
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -105,5 +106,48 @@ def test_invalid_pagination_and_command_schema_are_rejected():
             headers=AUTH,
         )
         assert response.status_code == 422
+    finally:
+        store.close()
+
+
+def test_status_and_safe_demo_incident_flow():
+    client, store = build_client()
+    try:
+        status_response = client.get("/status", headers=AUTH)
+        assert status_response.status_code == 200
+        assert status_response.json()["api"]["state"] == "connected"
+        assert status_response.json()["collector"]["state"] == "not_configured"
+
+        demo_response = client.post("/demo/incidents", headers=AUTH)
+        assert demo_response.status_code == 200
+        demo = demo_response.json()
+        assert demo["incident_id"].startswith("demo-incident-")
+        assert demo["verdict"] == "suspicious"
+        assert len(demo["source_events"]) == 3
+        assert client.get(
+            f"/incidents/{demo['incident_id']}", headers=AUTH
+        ).status_code == 200
+    finally:
+        store.close()
+
+
+def test_authenticated_shutdown_runs_the_desktop_callback():
+    client, store = build_client()
+    stopped = Event()
+    # build_client의 앱과 다른 런타임이 필요하므로 종료 콜백이 연결된 전용 앱을 만든다.
+    runtime = ApiRuntime(
+        event_store=store,
+        dry_run_service=DryRunResponseService(),
+        approval_service=ApprovalService(),
+        shutdown_callback=stopped.set,
+    )
+    shutdown_client = TestClient(
+        create_app(runtime, api_token=TOKEN, enforce_loopback=False)
+    )
+    try:
+        assert shutdown_client.post("/shutdown").status_code == 401
+        response = shutdown_client.post("/shutdown", headers=AUTH)
+        assert response.json() == {"status": "shutting_down"}
+        assert stopped.wait(timeout=1)
     finally:
         store.close()
