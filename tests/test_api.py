@@ -46,6 +46,21 @@ def test_health_is_public_but_incidents_require_a_valid_token():
         store.close()
 
 
+def test_api_token_is_exchanged_for_process_scoped_http_only_session():
+    client, store = build_client()
+    try:
+        assert client.post("/session", json={"token": "wrong-token"}).status_code == 422
+        response = client.post("/session", json={"token": TOKEN})
+        assert response.json() == {"status": "connected"}
+        cookie = response.headers["set-cookie"].lower()
+        assert "weavexdr_session=" in cookie
+        assert "httponly" in cookie
+        assert "samesite=strict" in cookie
+        assert client.get("/incidents").status_code == 200
+    finally:
+        store.close()
+
+
 def test_incident_detail_exposes_score_findings_and_source_events():
     client, store = build_client()
     try:

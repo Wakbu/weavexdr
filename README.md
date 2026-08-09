@@ -9,7 +9,7 @@ WeaveXDR은 Windows 개인 PC를 위한 로컬 AI XDR 프로젝트다. 보안 �
 - OWASP, MITRE ATT&CK와 CISA 기준 탐지 규칙
 - 규칙 모델 장애 대체와 정책 가드가 적용된 선택적 로컬 모델
 - 승인·대상 재검증 기반 프로세스 종료, 파일 격리·복원과 네트워크 차단
-- 인증된 loopback API, 실시간 사건 대시보드와 감사 로그
+- 인증된 loopback API, HttpOnly 브라우저 세션, Sysmon 실시간 사건 대시보드와 감사 로그
 - SQLite 보안 지식 그래프 기반 유사 사건과 공격 경로 조회
 
 ## 빠른 실행
@@ -28,7 +28,7 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-현재 회귀 테스트는 `115 passed`, 기준 평가 데이터는 `30/30 passed`다.
+현재 회귀 테스트는 `122 passed`, 기준 평가 데이터는 `30/30 passed`다.
 
 ## 문서
 

@@ -21,7 +21,8 @@ def create_service_class():
     from xdr_graph.logging_setup import configure_rotating_logging
     from xdr_graph.response import ApprovalService, DryRunResponseService
     from xdr_graph.runtime_security import RuntimeSecrets
-    from xdr_graph.storage import SQLiteEventStore
+    from xdr_graph.storage import PersistentIngestionService, SQLiteEventStore
+    from xdr_graph.sysmon_collector import SysmonCollector
     import uvicorn
 
     class WeaveXdrService(win32serviceutil.ServiceFramework):
@@ -33,6 +34,7 @@ def create_service_class():
             super().__init__(args)
             self.stop_event = win32event.CreateEvent(None, 0, 0, None)
             self.server = None
+            self.collector = None
 
         def SvcStop(self):
             self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
@@ -51,6 +53,20 @@ def create_service_class():
                     dry_run_service=DryRunResponseService(),
                     approval_service=ApprovalService(),
                 )
+                ingestion_service = PersistentIngestionService(
+                    store,
+                    event_publisher=runtime.event_broker,
+                )
+
+                def update_collector_status(status: dict[str, object]) -> None:
+                    with runtime.lock:
+                        runtime.collector_status = status
+
+                self.collector = SysmonCollector(
+                    ingestion_service,
+                    status_callback=update_collector_status,
+                    logger=logger,
+                )
                 config = uvicorn.Config(
                     create_app(runtime, api_token=secrets.api_token),
                     host="127.0.0.1",
@@ -58,8 +74,16 @@ def create_service_class():
                     log_config=None,
                 )
                 self.server = uvicorn.Server(config)
+                runtime.shutdown_callback = lambda: setattr(self.server, "should_exit", True)
+                self.collector.start()
                 logger.info("service started")
-                self.server.run()
+                try:
+                    self.server.run()
+                finally:
+                    if self.collector is not None:
+                        self.collector.stop()
+                    store.close()
+                    logger.info("service stopped")
             except Exception as error:
                 logger.exception("service stopped unexpectedly: %s", error)
                 servicemanager.LogErrorMsg(str(error))

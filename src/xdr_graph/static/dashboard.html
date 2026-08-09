@@ -154,25 +154,24 @@
           <div class="card setting-card"><h3>데이터 수집</h3><p>실시간 사건이 비어 있을 때 가장 먼저 확인할 항목입니다.</p><div class="setting-list" id="collector-settings"></div></div>
           <div class="card setting-card"><h3>탐지 엔진</h3><p>판정에 사용되는 규칙과 위험 점수 정책입니다.</p><div class="setting-list" id="policy-settings"></div></div>
           <div class="card setting-card"><h3>AI 모델</h3><p>로컬 모델 상태와 규칙 기반 안전 대체 경로입니다.</p><div class="setting-list" id="model-settings"></div></div>
-          <div class="card setting-card"><h3>로컬 연결</h3><p>EXE는 토큰을 자동으로 전달합니다. 인증 오류가 있을 때만 다시 연결하세요.</p><div class="setting-list"><div class="setting-row"><span>API 주소</span><strong>127.0.0.1:8765</strong></div><div class="setting-row"><span>접근 범위</span><strong>이 PC만 허용</strong></div></div><div class="token-box"><input id="settings-token" type="password" placeholder="새 API 토큰"><button class="secondary" id="save-token">다시 연결</button></div></div>
+          <div class="card setting-card"><h3>로컬 연결</h3><p>EXE가 실행할 때 자동 인증하며 같은 브라우저의 새 탭에서도 세션을 재사용합니다. 직접 API를 호출할 때만 고정 토큰이 필요합니다.</p><div class="setting-list"><div class="setting-row"><span>API 주소</span><strong>127.0.0.1:8765</strong></div><div class="setting-row"><span>인증 방식</span><strong>프로세스 전용 보안 세션</strong></div><div class="setting-row"><span>접근 범위</span><strong>이 PC만 허용</strong></div></div><div class="token-box"><input id="settings-token" type="password" placeholder="고정 API 토큰 (32자 이상)"><button class="secondary" id="save-token">세션 다시 연결</button></div></div>
         </div>
       </section>
     </main>
   </div>
 </div>
 
-<div class="modal-backdrop" id="auth-modal"><div class="modal"><h2>로컬 API 연결</h2><p>WeaveXDR EXE가 자동 전달한 인증 토큰을 찾지 못했습니다. EXE가 새로 연 탭을 사용하거나 토큰을 직접 입력하세요.</p><input id="modal-token" type="password" placeholder="API token"><button class="primary" id="modal-connect">연결</button></div></div>
+<div class="modal-backdrop" id="auth-modal"><div class="modal"><h2>로컬 API 다시 연결</h2><p>현재 브라우저에 유효한 세션이 없습니다. WeaveXDR를 종료한 뒤 EXE를 다시 실행하면 자동 연결됩니다. 고정 토큰을 설정한 경우에만 아래에 입력하세요.</p><input id="modal-token" type="password" placeholder="고정 API 토큰 (32자 이상)"><button class="primary" id="modal-connect">세션 연결</button></div></div>
 <div class="toast" id="toast"></div>
 
 <script>
   const fragmentToken = new URLSearchParams(location.hash.slice(1)).get('token') || '';
-  const state = { token: fragmentToken || sessionStorage.getItem('weavexdr-token') || '', incidents: [], settings: null, status: null, selected: null, tab: 'summary', streaming: false, streamController: null };
-  if (fragmentToken) { sessionStorage.setItem('weavexdr-token', fragmentToken); history.replaceState(null, '', location.pathname); }
+  const state = { token: '', incidents: [], settings: null, status: null, selected: null, tab: 'summary', streaming: false, streamController: null, statusTimer: null };
   const pageInfo = { overview:['보안 개요','현재 PC의 탐지 상태와 주요 사건을 확인합니다.'], incidents:['사건','탐지된 사건을 필터링하고 우선순위에 따라 조사합니다.'], investigation:['조사','연결된 증거와 공격 흐름을 따라 사건을 분석합니다.'], settings:['설정','수집기, 탐지 정책, 모델과 연결 상태를 관리합니다.'] };
   const verdictLabel = { suspicious:'고위험', needs_review:'검토 필요', benign:'정상' };
   const eventLabel = { process_start:'프로세스 시작', file_create:'파일 생성', network_connect:'네트워크 연결' };
   const actionLabel = { terminate_process:'프로세스 종료', quarantine_file:'파일 격리', block_network:'네트워크 차단', collect_additional_evidence:'추가 증거 수집' };
-  const authHeaders = () => ({ Authorization:`Bearer ${state.token}` });
+  const authHeaders = () => state.token ? ({ Authorization:`Bearer ${state.token}` }) : ({});
   const node = (tag, className, text) => { const item=document.createElement(tag); if(className)item.className=className; if(text!==undefined)item.textContent=String(text); return item; };
 
   async function api(path, options={}) {
@@ -181,16 +180,25 @@
     if (!response.ok) throw new Error(`${path} 요청 실패 (${response.status})`);
     return response.status === 204 ? null : response.json();
   }
+  async function establishSession(token) {
+    const response=await fetch('/session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})});
+    if(!response.ok)throw new Error('API 토큰이 올바르지 않거나 32자보다 짧습니다.');
+    // 원문 토큰은 HttpOnly 프로세스 세션으로 교환한 즉시 메모리와 주소에서 제거한다.
+    state.token='';history.replaceState(null,'',location.pathname+location.search);
+  }
   async function loadAll() {
-    if (!state.token) { showAuth(); return; }
     try {
       [state.incidents,state.settings,state.status] = await Promise.all([api('/incidents'),api('/settings'),api('/status')]);
       setConnected(true); renderAll(); if(!state.streaming) streamEvents();
     } catch(error) { setConnected(false); toast(error.message); }
   }
+  async function refreshStatus(){try{state.status=await api('/status');setConnected(true);renderStatus();renderSettings();}catch(error){setConnected(false);}}
   function setConnected(connected) {
-    const badge=document.querySelector('#connection'); badge.textContent=connected?'● API 연결됨':'● 연결 오류'; badge.classList.toggle('offline',!connected);
-    document.querySelector('#side-status').textContent=connected?'로컬 API 정상':'연결 확인 필요';
+    // 종료 화면으로 DOM이 교체된 뒤 늦게 끝난 네트워크 요청이 있어도 오류를 남기지 않는다.
+    const badge=document.querySelector('#connection'),sideStatus=document.querySelector('#side-status');
+    if(!badge||!sideStatus)return;
+    badge.textContent=connected?'● API 연결됨':'● 연결 오류'; badge.classList.toggle('offline',!connected);
+    sideStatus.textContent=connected?'로컬 API 정상':'연결 확인 필요';
   }
   function navigate(page) {
     document.querySelectorAll('.page').forEach(item=>item.classList.toggle('active',item.id===`page-${page}`));
@@ -199,11 +207,11 @@
   }
   function renderAll() { renderStatus(); renderMetrics(); renderTrend(); renderTables(); renderSettings(); if(state.selected) renderInvestigation(); }
   function renderStatus() {
-    const collector=state.status?.collector||{}; const configured=collector.state==='running'; const banner=document.querySelector('#collector-banner');
-    banner.querySelector('strong').textContent=configured?'실시간 보안 이벤트를 수집하고 있습니다.':'실시간 수집기가 아직 연결되지 않았습니다.';
-    banner.querySelector('span').textContent=configured?'새 사건이 발생하면 이 화면에 자동 반영됩니다.':'현재는 저장된 사건과 안전한 데모를 볼 수 있습니다. 실제 탐지를 위해 Sysmon 수집기 연결이 필요합니다.';
-    banner.querySelector('.banner-icon').textContent=configured?'✓':'!';
-    document.querySelector('#kpi-health').textContent=configured?'보호 중':'제한됨'; document.querySelector('#kpi-health-note').textContent=configured?'실시간 수집 정상':'API 정상 · 수집 미구성';
+    const collector=state.status?.collector||{}; const running=collector.state==='running',starting=collector.state==='starting',failed=collector.state==='error'; const banner=document.querySelector('#collector-banner');
+    banner.querySelector('strong').textContent=collector.label||(running?'실시간 Sysmon 수집 중':'수집 상태 확인 중');
+    banner.querySelector('span').textContent=running?`새 사건을 자동 분석합니다. 처리 이벤트 ${collector.processed_events||0}개${collector.last_event_at?` · 마지막 수집 ${formatTime(collector.last_event_at)}`:''}`:failed?'Sysmon 설치와 이벤트 로그 읽기 권한을 확인하세요. 수집기는 자동으로 재시도합니다.':starting?'Windows 이벤트 로그 연결을 확인하고 있습니다.':'현재는 저장된 사건과 안전한 데모를 볼 수 있습니다.';
+    banner.querySelector('.banner-icon').textContent=running?'✓':starting?'…':'!';
+    document.querySelector('#kpi-health').textContent=running?'보호 중':starting?'시작 중':'제한됨'; document.querySelector('#kpi-health-note').textContent=running?'Sysmon 실시간 수집 정상':failed?'수집 오류 · 설정 확인':'API 정상 · 수집 준비 중';
   }
   function renderMetrics() {
     const high=state.incidents.filter(x=>x.verdict==='suspicious').length, review=state.incidents.filter(x=>x.verdict==='needs_review').length, benign=state.incidents.filter(x=>x.verdict==='benign').length, total=state.incidents.length;
@@ -229,7 +237,7 @@
     const full=document.querySelector('#incident-table');full.replaceChildren(incidentTable(filtered,false)); bindDemoButtons();
   }
   function renderSettings() {
-    if(!state.settings||!state.status)return; const collector=document.querySelector('#collector-settings');collector.replaceChildren(settingRow('상태',state.status.collector.label||state.status.collector.state),settingRow('수집 소스',(state.status.collector.sources||[]).join(', ')||'연결된 소스 없음'),settingRow('다음 단계','Sysmon 실시간 수집기 연결'));
+    if(!state.settings||!state.status)return; const collectorStatus=state.status.collector; const collector=document.querySelector('#collector-settings');const running=collectorStatus.state==='running',permissionError=(collectorStatus.label||'').includes('권한 부족');const userAction=running?'필요 없음 · 자동 수집 중':permissionError?'관리자 PowerShell에서 configure_sysmon_access.ps1 실행':'Sysmon 설치 및 로그 상태 확인';collector.replaceChildren(settingRow('상태',collectorStatus.label||collectorStatus.state),settingRow('수집 소스',(collectorStatus.sources||[]).join(', ')||'연결된 소스 없음'),settingRow('처리 이벤트',`${collectorStatus.processed_events||0}개`),settingRow('마지막 수집',collectorStatus.last_event_at?formatTime(collectorStatus.last_event_at):'아직 없음'),settingRow('사용자 조치',userAction));
     const policy=document.querySelector('#policy-settings');policy.replaceChildren(settingRow('탐지 규칙',state.settings.detection_rule_version),settingRow('위험 점수 정책',state.settings.risk_policy_version),settingRow('허용 목록 정책',state.settings.allowlist_policy_version),settingRow('허용 항목',`${state.settings.allowlist_entries.length}개`));
     const model=document.querySelector('#model-settings');model.replaceChildren(settingRow('제공자',state.status.model.provider||'rule_based'),settingRow('상태',state.status.model.available?'사용 가능':'대체 모델 사용'),settingRow('안전 대체','규칙 기반 판정'),settingRow('실제 대응',state.status.active_response?'활성화':'기본 비활성화'));
   }
@@ -242,7 +250,7 @@
   async function createDemo(){try{toast('안전한 데모 사건을 분석하고 있습니다…');const report=await api('/demo/incidents',{method:'POST'});state.incidents=[report,...state.incidents];renderAll();selectIncident(report);toast('데모 사건이 생성되었습니다. 실제 악성 코드는 실행되지 않았습니다.');}catch(error){toast(error.message);}}
   async function streamEvents(){state.streaming=true;const controller=new AbortController();state.streamController=controller;try{const response=await fetch('/events',{headers:authHeaders(),signal:controller.signal});if(!response.ok||!response.body)return;const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='';while(true){const{value,done}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});const messages=buffer.split('\n\n');buffer=messages.pop();messages.forEach(message=>{const line=message.split('\n').find(x=>x.startsWith('data:'));if(!line)return;const item=JSON.parse(line.slice(5));state.incidents=[item,...state.incidents.filter(x=>x.incident_id!==item.incident_id)];renderAll();});}}catch(error){if(error.name!=='AbortError')console.warn('실시간 사건 연결이 종료되었습니다.',error);}finally{if(state.streamController===controller)state.streamController=null;state.streaming=false;}}
   function showAuth(){document.querySelector('#auth-modal').classList.add('open');}
-  function saveToken(value){state.token=value.trim();if(!state.token)return;sessionStorage.setItem('weavexdr-token',state.token);document.querySelector('#auth-modal').classList.remove('open');loadAll();}
+  async function saveToken(value){const token=value.trim();if(token.length<32){toast('API 토큰은 32자 이상이어야 합니다.');return;}try{await establishSession(token);document.querySelector('#auth-modal').classList.remove('open');document.querySelector('#modal-token').value='';document.querySelector('#settings-token').value='';await loadAll();toast('브라우저 보안 세션을 연결했습니다.');}catch(error){toast(error.message);}}
   function toast(message){const box=document.querySelector('#toast');box.textContent=message;box.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>box.classList.remove('show'),3500);}
   const findingLabels={'PROC-001':'Office 프로그램이 스크립트 실행기를 호출함','PROC-002':'PowerShell에서 인코딩된 명령 사용','FILE-001':'사용자 쓰기 가능 경로에 실행 파일 또는 스크립트 생성','NET-001':'스크립트 실행기가 공인 IP에 연결함','CORR-001':'여러 보안 이벤트가 하나의 공격 흐름으로 연결됨'};
   function findingLabel(finding){return findingLabels[finding.rule_id]||finding.reason;}
@@ -257,9 +265,10 @@
   document.querySelector('#refresh').onclick=loadAll;document.querySelector('#incident-search').oninput=renderTables;document.querySelector('#verdict-filter').onchange=renderTables;
   document.querySelector('#investigation-tabs').onclick=event=>{const button=event.target.closest('[data-tab]');if(!button)return;state.tab=button.dataset.tab;renderInvestigation();};
   document.querySelector('#modal-connect').onclick=()=>saveToken(document.querySelector('#modal-token').value);document.querySelector('#save-token').onclick=()=>saveToken(document.querySelector('#settings-token').value);
-  document.querySelector('#shutdown').onclick=async()=>{if(!confirm('WeaveXDR 서버를 종료할까요? 브라우저 탭도 더 이상 데이터를 불러올 수 없습니다.'))return;try{state.streamController?.abort();await api('/shutdown',{method:'POST'});setConnected(false);toast('WeaveXDR를 종료했습니다. 이 탭을 닫아도 됩니다.');setTimeout(()=>document.body.replaceChildren(node('div','empty','WeaveXDR가 종료되었습니다. 이 창을 닫아 주세요.')),700);}catch(error){toast(error.message);}};
+  document.querySelector('#shutdown').onclick=async()=>{if(!confirm('WeaveXDR 서버를 종료할까요? 브라우저 탭도 더 이상 데이터를 불러올 수 없습니다.'))return;try{clearInterval(state.statusTimer);state.statusTimer=null;state.streamController?.abort();await api('/shutdown',{method:'POST'});setConnected(false);toast('WeaveXDR를 종료했습니다. 이 탭을 닫아도 됩니다.');setTimeout(()=>document.body.replaceChildren(node('div','empty','WeaveXDR가 종료되었습니다. 이 창을 닫아 주세요.')),700);}catch(error){if(!state.statusTimer)state.statusTimer=setInterval(refreshStatus,3000);toast(error.message);}};
   window.addEventListener('beforeunload',()=>state.streamController?.abort());
-  bindDemoButtons(); renderTrend(); loadAll();
+  async function bootstrap(){renderTrend();if(fragmentToken){try{await establishSession(fragmentToken);}catch(error){showAuth();toast(error.message);return;}}await loadAll();state.statusTimer=setInterval(refreshStatus,3000);}
+  bindDemoButtons(); bootstrap();
 </script>
 </body>
 </html>

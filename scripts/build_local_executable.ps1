@@ -107,7 +107,14 @@ try {
     }
     $status = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:8765/status" -Headers $headers -TimeoutSec 3
     if ($status.StatusCode -ne 200) { throw "Authenticated status check failed." }
-    $shutdown = Invoke-WebRequest -UseBasicParsing -Method Post -Uri "http://127.0.0.1:8765/shutdown" -Headers $headers -TimeoutSec 3
+    # 브라우저는 Bearer 토큰을 계속 보관하지 않고 프로세스 전용 HttpOnly 세션으로
+    # 교환하므로 실제 EXE에서도 쿠키 인증 경로를 별도로 확인한다.
+    $sessionBody = @{ token = $verificationToken } | ConvertTo-Json
+    $sessionResponse = Invoke-WebRequest -UseBasicParsing -Method Post -Uri "http://127.0.0.1:8765/session" -ContentType "application/json" -Body $sessionBody -SessionVariable browserSession -TimeoutSec 3
+    if ($sessionResponse.StatusCode -ne 200) { throw "Browser session exchange failed." }
+    $cookieStatus = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:8765/status" -WebSession $browserSession -TimeoutSec 3
+    if ($cookieStatus.StatusCode -ne 200) { throw "Browser cookie authentication failed." }
+    $shutdown = Invoke-WebRequest -UseBasicParsing -Method Post -Uri "http://127.0.0.1:8765/shutdown" -WebSession $browserSession -TimeoutSec 3
     if ($shutdown.StatusCode -ne 200) { throw "Executable shutdown request failed." }
     if (-not $serverProcess.WaitForExit(10000)) { throw "Executable did not stop after shutdown request." }
 }

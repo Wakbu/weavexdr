@@ -13,12 +13,33 @@ Set-ExecutionPolicy -Scope Process Bypass
 
 ZIP의 `WeaveXDR.exe`는 설치 없이 실행하는 로컬 대시보드 실행본이다. 소스 폴더에서는 프로젝트 루트의 동일한 파일 하나를 현재 버전으로 유지하고, 새 빌드가 완전히 성공한 뒤 기존 파일을 교체한다.
 
+포터블 EXE는 실행할 때 임시 API 토큰을 자동 발급하고 브라우저에서 프로세스 전용 HttpOnly 세션으로 교환한다. 토큰 원문은 주소에서 즉시 제거되며 같은 브라우저의 새 탭은 별도 입력 없이 세션을 재사용한다. 전체 브라우저 세션이 끝났거나 인증 오류가 발생하면 EXE를 정상 종료한 뒤 다시 실행한다.
+
+외부 API 클라이언트를 직접 사용할 때만 `WEAVEXDR_API_TOKEN`을 32자 이상으로 지정한다. 포터블 실행은 `User`, Windows 서비스는 `Machine` 환경 변수를 사용하며 토큰을 문서나 로그에 기록하지 않는다.
+
+## Sysmon 실시간 수집
+
+WeaveXDR는 Sysmon Operational 로그의 프로세스 생성(1), 네트워크 연결(3), 파일 생성(11)을 새 레코드부터 실시간 수집한다. 포터블 EXE가 `Sysmon 로그 읽기 권한 부족`을 표시하면 압축 폴더의 다음 스크립트를 관리자 PowerShell에서 한 번 실행하고 WeaveXDR를 재시작한다.
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\configure_sysmon_access.ps1
+```
+
+스크립트는 현재 로그인 사용자에게 Sysmon 채널의 읽기 권한 `0x1`만 추가하고 기존 채널 SDDL을 `%ProgramData%\WeaveXDR`에 백업한다. 원상 복구는 다음과 같다.
+
+```powershell
+.\configure_sysmon_access.ps1 -Restore
+```
+
+Sysmon 자체가 없으면 먼저 Microsoft Sysmon을 설치하고 `config/sysmon-minimal.xml`과 동등하게 이벤트 ID 1·3·11이 기록되도록 구성해야 한다. 설치형 WeaveXDR 서비스는 LocalSystem 수집기를 사용하므로 별도의 사용자 채널 권한이 필요하지 않다.
+
 ## 대시보드 사용
 
 - **보안 개요**: 전체 사건 수, 위험도 분포, 최근 사건과 수집 상태를 확인한다.
 - **사건**: 검색과 판정 필터로 조사할 사건을 선택한다. 초기에는 `안전한 데모 생성`으로 화면 흐름을 확인할 수 있으며 실제 악성 코드를 실행하지 않는다.
 - **조사**: 요약, 원본 증거, 시간순 공격 흐름과 권장 대응을 한 사건 단위로 확인한다.
-- **설정**: Sysmon 수집기, 탐지 정책, 로컬 모델과 API 연결 상태를 확인한다.
+- **설정**: Sysmon 수집 상태, 처리 이벤트 수, 마지막 수집 시각, 필요한 권한 조치와 API 세션 상태를 확인한다.
 
 브라우저 탭만 닫으면 로컬 서버는 종료되지 않는다. 왼쪽 아래의 `WeaveXDR 종료`를 누르고 확인 대화상자에서 승인해야 EXE와 8765 포트가 함께 종료된다.
 

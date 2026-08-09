@@ -3,6 +3,7 @@ from __future__ import annotations
 import hmac
 import logging
 import os
+import secrets
 import sys
 import time
 from collections.abc import Callable
@@ -14,7 +15,7 @@ from threading import Event, RLock
 from uuid import uuid4
 
 import uvicorn
-from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
+from fastapi import Cookie, Depends, FastAPI, Header, HTTPException, Request, Response, status
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, TypeAdapter
@@ -66,6 +67,10 @@ class RestoreBody(BaseModel):
     confirmed: bool
 
 
+class SessionTokenBody(BaseModel):
+    token: str = Field(min_length=32)
+
+
 @dataclass
 class ApiRuntime:
     event_store: SQLiteEventStore
@@ -103,6 +108,9 @@ def create_app(
     # 오류가 아니라 시작/릴리스 검증 단계에서 발견한다.
     dashboard_html = load_dashboard_html()
     app = FastAPI(title="WeaveXDR Local API", version="0.1.0")
+    # 브라우저에는 API 토큰 원문 대신 이 프로세스에서만 유효한 별도 세션 값을
+    # HttpOnly 쿠키로 전달한다. 서버 재시작 시 자동 폐기되어 고정 API 토큰도 노출하지 않는다.
+    browser_session_token = secrets.token_urlsafe(32)
 
     @app.exception_handler(Exception)
     async def log_unhandled_error(request: Request, error: Exception) -> JSONResponse:
@@ -113,18 +121,31 @@ def create_app(
         )
         return JSONResponse(status_code=500, content={"detail": "internal server error"})
 
-    async def require_local_token(
-        request: Request,
-        authorization: str | None = Header(default=None),
-    ) -> None:
+    def require_loopback(request: Request) -> None:
         if enforce_loopback:
             client_host = request.client.host if request.client else ""
             if client_host not in {"127.0.0.1", "::1"}:
                 raise HTTPException(status_code=403, detail="loopback access only")
+
+    async def require_local_token(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        browser_session: str | None = Cookie(
+            default=None,
+            alias="weavexdr_session",
+        ),
+    ) -> None:
+        require_loopback(request)
         scheme, _, supplied_token = (authorization or "").partition(" ")
-        if scheme.lower() != "bearer" or not hmac.compare_digest(
-            supplied_token, api_token
-        ):
+        valid_bearer = scheme.lower() == "bearer" and hmac.compare_digest(
+            supplied_token,
+            api_token,
+        )
+        valid_session = bool(browser_session) and hmac.compare_digest(
+            browser_session or "",
+            browser_session_token,
+        )
+        if not valid_bearer and not valid_session:
             # 인증 실패에서 토큰 존재 여부나 일부 일치 정보를 노출하지 않는다.
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -142,6 +163,24 @@ def create_app(
     def dashboard() -> HTMLResponse:
         # 명시적인 응답 객체를 사용해 번들 환경에서 문자열 응답 모델 추론을 거치지 않는다.
         return HTMLResponse(content=dashboard_html)
+
+    @app.post("/session")
+    def create_browser_session(
+        body: SessionTokenBody,
+        request: Request,
+        response: Response,
+    ) -> dict[str, str]:
+        require_loopback(request)
+        if not hmac.compare_digest(body.token, api_token):
+            raise HTTPException(status_code=401, detail="invalid API credentials")
+        response.set_cookie(
+            "weavexdr_session",
+            browser_session_token,
+            httponly=True,
+            samesite="strict",
+            path="/",
+        )
+        return {"status": "connected"}
 
     @app.get("/incidents", response_model=list[IncidentReport], dependencies=protected)
     def list_incidents(limit: int = 100, offset: int = 0):
@@ -176,9 +215,11 @@ def create_app(
 
     @app.get("/status", dependencies=protected)
     def runtime_status():
+        with runtime.lock:
+            collector_status = dict(runtime.collector_status)
         return {
             "api": {"state": "connected", "label": "로컬 API 정상"},
-            "collector": runtime.collector_status,
+            "collector": collector_status,
             "model": runtime.model_status,
             "active_response": runtime.actual_response_service is not None,
         }
@@ -248,7 +289,7 @@ def create_app(
         return receipt.report
 
     @app.post("/shutdown", dependencies=protected)
-    def shutdown():
+    def shutdown(response: Response):
         if runtime.shutdown_callback is None:
             raise HTTPException(status_code=503, detail="desktop shutdown is unavailable")
         # Uvicorn은 현재 응답을 마친 뒤 should_exit를 확인한다. 번들 환경에서
@@ -257,6 +298,7 @@ def create_app(
         # 기다리지 않고 실제 EXE 프로세스까지 종료할 수 있다.
         runtime.shutdown_event.set()
         runtime.shutdown_callback()
+        response.delete_cookie("weavexdr_session", path="/")
         return {"status": "shutting_down"}
 
     @app.get("/events", dependencies=protected)

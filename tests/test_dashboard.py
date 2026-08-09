@@ -68,12 +68,16 @@ def test_dashboard_and_settings_are_available_without_rendering_event_html():
         assert "row.innerHTML" not in dashboard.text
         assert "location.hash.slice(1)" in dashboard.text
         assert "history.replaceState" in dashboard.text
+        assert "fetch('/session'" in dashboard.text
+        assert "sessionStorage" not in dashboard.text
         assert 'data-nav="incidents"' in dashboard.text
         assert 'data-nav="investigation"' in dashboard.text
         assert 'id="shutdown"' in dashboard.text
         assert "안전한 데모 생성" in dashboard.text
         assert "new AbortController()" in dashboard.text
         assert "state.streamController?.abort()" in dashboard.text
+        assert "clearInterval(state.statusTimer)" in dashboard.text
+        assert "if(!badge||!sideStatus)return" in dashboard.text
 
         assert client.get("/settings").status_code == 401
         settings = client.get("/settings", headers=AUTH).json()

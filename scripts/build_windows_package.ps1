@@ -18,6 +18,7 @@ Copy-Item -LiteralPath $wheel.FullName -Destination $stageRoot
 Copy-Item -LiteralPath (Join-Path $projectRoot "WeaveXDR.exe") -Destination $stageRoot
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "install.ps1") -Destination $stageRoot
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "uninstall.ps1") -Destination $stageRoot
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot "configure_sysmon_access.ps1") -Destination $stageRoot
 $manifest = @{ version = $Version; format = "weavexdr-windows-package-v1" } | ConvertTo-Json
 Set-Content -LiteralPath (Join-Path $stageRoot "weavexdr-release.json") -Value $manifest -Encoding utf8
 $archivePath = Join-Path $distRoot "weavexdr-$Version-windows.zip"

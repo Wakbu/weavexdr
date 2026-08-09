@@ -18,7 +18,8 @@ from xdr_graph.detection import load_default_detection_engine
 from xdr_graph.logging_setup import configure_rotating_logging
 from xdr_graph.response import ApprovalService, DryRunResponseService
 from xdr_graph.risk_policy import load_default_risk_policy
-from xdr_graph.storage import SQLiteEventStore
+from xdr_graph.storage import PersistentIngestionService, SQLiteEventStore
+from xdr_graph.sysmon_collector import SysmonCollector
 
 
 def build_embedded_server(app, *, port: int) -> uvicorn.Server:
@@ -100,9 +101,28 @@ def main() -> None:
     logger.info("desktop runtime started")
     server = build_embedded_server(app, port=8765)
     runtime.shutdown_callback = lambda: setattr(server, "should_exit", True)
+    ingestion_service = PersistentIngestionService(
+        store,
+        event_publisher=runtime.event_broker,
+    )
+
+    def update_collector_status(status: dict[str, object]) -> None:
+        # API 요청과 수집 스레드가 같은 상태 객체를 동시에 읽고 쓰지 않도록
+        # 런타임 잠금 아래에서 완성된 상태 사전으로 교체한다.
+        with runtime.lock:
+            runtime.collector_status = status
+
+    collector = SysmonCollector(
+        ingestion_service,
+        status_callback=update_collector_status,
+        logger=logger,
+    )
+    collector.start()
     try:
         server.run()
     finally:
+        if not collector.stop():
+            logger.warning("Sysmon collector did not stop within the shutdown timeout")
         # 종료 버튼과 예외 종료 모두 DB 핸들을 닫아 업데이트·백업 시 파일 잠금이 남지 않게 한다.
         store.close()
         logger.info("desktop runtime stopped")
