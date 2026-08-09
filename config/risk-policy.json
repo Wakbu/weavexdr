@@ -4,6 +4,6 @@
   "maximum_score": 100,
   "needs_review_min_score": 35,
   "suspicious_min_score": 70,
-  "suspicious_actions": ["terminate_process", "quarantine_file"],
+  "suspicious_actions": ["terminate_process", "quarantine_file", "block_network"],
   "review_actions": ["collect_additional_evidence"]
 }

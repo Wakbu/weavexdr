@@ -13,7 +13,7 @@ from xdr_graph.models import IncidentReport
 
 DEFAULT_RESPONSE_POLICY_PATH = Path(__file__).parents[2] / "config" / "response-policy.json"
 ResponseAction = Literal[
-    "terminate_process", "quarantine_file", "collect_additional_evidence"
+    "terminate_process", "quarantine_file", "block_network", "collect_additional_evidence"
 ]
 
 
@@ -63,8 +63,23 @@ class CollectEvidenceCommand(BaseResponseCommand):
     event_ids: list[str] = Field(min_length=1)
 
 
+class BlockNetworkCommand(BaseResponseCommand):
+    action: Literal["block_network"]
+    remote_ip: str
+
+    @field_validator("remote_ip")
+    @classmethod
+    def require_ip_address(cls, value: str) -> str:
+        from ipaddress import ip_address
+
+        return str(ip_address(value))
+
+
 ResponseCommand = Annotated[
-    TerminateProcessCommand | QuarantineFileCommand | CollectEvidenceCommand,
+    TerminateProcessCommand
+    | QuarantineFileCommand
+    | BlockNetworkCommand
+    | CollectEvidenceCommand,
     Field(discriminator="action"),
 ]
 
@@ -136,6 +151,8 @@ class DryRunResponseService:
             if self._is_protected_path(command.file_path):
                 reasons.append("target is under a protected system path")
             target_summary = f"file path={command.file_path} sha256={command.sha256.lower()}"
+        elif isinstance(command, BlockNetworkCommand):
+            target_summary = f"remote_ip={command.remote_ip} direction=outbound"
         else:
             report_event_ids = {event.event_id for event in incident_report.source_events}
             if not set(command.event_ids) <= report_event_ids:

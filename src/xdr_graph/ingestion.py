@@ -10,6 +10,7 @@ from langgraph.graph.state import CompiledStateGraph
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from xdr_graph.models import IncidentReport, SecurityEvent
+from xdr_graph.audit import AuditLogger
 from xdr_graph.workflow import build_workflow
 
 
@@ -68,10 +69,15 @@ class EventBatchSink(Protocol):
 class GraphIngestionService:
     """검증된 이벤트 배치를 현재 LangGraph 사건 흐름에 연결한다."""
 
-    def __init__(self, workflow: CompiledStateGraph | None = None) -> None:
+    def __init__(
+        self,
+        workflow: CompiledStateGraph | None = None,
+        audit_logger: AuditLogger | None = None,
+    ) -> None:
         # 테스트나 향후 운영 설정에서 다른 모델 구성을 주입할 수 있게 한다.
         # 지정하지 않으면 안전한 규칙 기반 그래프를 사용한다.
         self.workflow = workflow or build_workflow()
+        self.audit_logger = audit_logger
 
     def submit_raw(self, raw_batch: dict[str, Any]) -> IngestionReceipt:
         # 외부 수집기 입력은 신뢰하지 않고 Pydantic 계약을 먼저 통과시킨다.
@@ -85,12 +91,28 @@ class GraphIngestionService:
         graph_result = self.workflow.invoke(
             {"raw_incident": incident_payload, "findings": []}
         )
-        return IngestionReceipt(
+        receipt = IngestionReceipt(
             batch_id=batch.batch_id,
             incident_id=batch.incident_id,
             accepted_event_count=len(batch.events),
             report=graph_result["report"],
         )
+        if self.audit_logger:
+            # 원본 명령줄 전체 대신 사건·배치 식별자와 판정 요약을 남겨 감사성과
+            # 개인정보 최소화를 동시에 유지한다. 상세 원본은 사건 저장소에서 추적한다.
+            self.audit_logger.record(
+                "analysis",
+                "graph_analysis",
+                "succeeded",
+                {
+                    "batch_id": batch.batch_id,
+                    "incident_id": batch.incident_id,
+                    "event_count": len(batch.events),
+                    "verdict": receipt.report.verdict,
+                    "risk_score": receipt.report.risk_score,
+                },
+            )
+        return receipt
 
 
 def main() -> None:

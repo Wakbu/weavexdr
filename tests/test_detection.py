@@ -78,4 +78,4 @@ def test_risk_policy_uses_configured_thresholds():
 
     assert decision.score == 75
     assert decision.verdict == "suspicious"
-    assert decision.actions == ["terminate_process", "quarantine_file"]
+    assert decision.actions == ["terminate_process", "quarantine_file", "block_network"]

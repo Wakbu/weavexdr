@@ -4,11 +4,13 @@
   "allowed_actions": [
     "terminate_process",
     "quarantine_file",
+    "block_network",
     "collect_additional_evidence"
   ],
   "approval_required_actions": [
     "terminate_process",
-    "quarantine_file"
+    "quarantine_file",
+    "block_network"
   ],
   "approval_ttl_minutes": 10,
   "protected_process_names": [
