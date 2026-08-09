@@ -114,6 +114,26 @@ class Finding(BaseModel):
     severity: int = Field(ge=0, le=100)
     reason: str
     event_ids: list[str] = Field(min_length=1)
+    # 외부 분류 ID를 함께 남겨 규칙 설명이 바뀌어도 어떤 기준으로 탐지했는지 추적한다.
+    references: list["ThreatReference"] = Field(default_factory=list)
+
+
+class ThreatReference(BaseModel):
+    framework: Literal["owasp", "owasp_genai", "mitre_attack", "cisa_kev", "local"]
+    external_id: str = Field(min_length=1)
+    url: str | None = None
+
+
+class AttackChain(BaseModel):
+    """같은 프로세스 계보와 시간 범위 안에서 연결된 원본 이벤트 묶음."""
+
+    chain_id: str
+    root_process_event_id: str
+    process_event_ids: list[str]
+    evidence_event_ids: list[str]
+    event_types: list[str]
+    started_at: datetime
+    ended_at: datetime
 
 
 class ValidationResult(BaseModel):
@@ -135,6 +155,7 @@ class IncidentState(TypedDict, total=False):
     raw_incident: dict[str, Any]
     incident: IncidentInput
     findings: Annotated[list[Finding], operator.add]
+    attack_chains: list[AttackChain]
     risk_score: int
     verdict: Literal["benign", "needs_review", "suspicious"]
     evidence: list[str]

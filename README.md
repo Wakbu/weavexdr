@@ -68,6 +68,18 @@ Defender 검사는 Windows 권한 정책에 따라 관리자 권한이 필요할
 
 `DirectoryFileWatcher`는 기본적으로 다운로드와 임시 폴더의 신규 파일을 폴링한다. 파일 크기와 수정 시각이 두 번 연속 같을 때만 검사해 다운로드 중인 파일을 피하며, 심볼릭 링크와 기존 파일은 자동 검사하지 않는다. 감시 결과는 `FileCreateEvent`와 `FileInspectionResult`를 함께 제공하므로 다음 상관분석 단계에서 사건 그래프에 연결할 수 있다.
 
+## 설정 기반 탐지와 상관분석
+
+기본 탐지 규칙은 `config/detection-rules.json`, 위험 점수와 판정 임계값은 `config/risk-policy.json`에서 관리한다.
+
+- 규칙마다 OWASP·MITRE ATT&CK·CISA 등 출처 버전과 공식 URL 기록
+- 새 규칙 묶음의 스키마·중복·HTTPS 출처·SHA-256 검증 후 활성화
+- 문제 발생 시 직전 규칙 묶음으로 롤백
+- 기본 점수 판정: 0~34 `benign`, 35~69 `needs_review`, 70 이상 `suspicious`
+- `suspicious`는 서로 다른 분석 출처가 두 개 미만이면 독립 검증 노드가 `needs_review`로 낮춤
+- 기본 5분 범위에서 ProcessGuid 또는 PID·시작 시각으로 프로세스·파일·네트워크 연결
+- 부모 ProcessGuid를 따라 프로세스 트리와 원본 이벤트 ID가 포함된 공격 흐름 생성
+
 ## Sysmon 수집 환경
 
 Microsoft Sysmon 15.21 서비스와 드라이버를 설정 스키마 4.91로 설치했다. 프로젝트 기준 설정은 `config/sysmon-minimal.xml`, 실제 적용 사본은 `C:\ProgramData\PersonalXDR\sysmon-minimal.xml`이다.
@@ -120,7 +132,7 @@ powershell.exe -ExecutionPolicy Bypass -File .\scripts\verify_sysmon.ps1 -Output
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-테스트는 그래프 판정, 이벤트 저장, 제한된 파일 검사와 신규 파일 감시를 검증한다. 현재 전체 결과는 `67 passed`다.
+테스트는 그래프 판정, 이벤트 저장, 파일 감시, 설정 규칙과 프로세스 상관분석을 검증한다. 현재 전체 결과는 `73 passed`, 기준 평가는 `30/30 passed`다.
 
 ## 기준 평가
 

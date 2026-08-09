@@ -1,0 +1,9 @@
+{
+  "schema_version": "1.0",
+  "policy_version": "20260809.1",
+  "maximum_score": 100,
+  "needs_review_min_score": 35,
+  "suspicious_min_score": 70,
+  "suspicious_actions": ["terminate_process", "quarantine_file"],
+  "review_actions": ["collect_additional_evidence"]
+}

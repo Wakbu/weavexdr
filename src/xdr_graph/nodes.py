@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import ipaddress
-from pathlib import PureWindowsPath
-
+from xdr_graph.correlation import EventCorrelationEngine
+from xdr_graph.detection import DetectionRuleEngine, load_default_detection_engine
 from xdr_graph.models import (
     Finding,
     IncidentInput,
@@ -13,8 +12,6 @@ from xdr_graph.models import (
 from xdr_graph.model_adapter import ModelAdapter
 
 
-OFFICE_PROCESSES = {"winword.exe", "excel.exe", "powerpnt.exe", "outlook.exe"}
-SCRIPT_PROCESSES = {"powershell.exe", "pwsh.exe", "cmd.exe", "wscript.exe", "mshta.exe"}
 ALLOWED_ACTIONS = {"terminate_process", "quarantine_file", "collect_additional_evidence"}
 
 
@@ -23,86 +20,33 @@ def normalize_event(state: IncidentState) -> dict:
     return {"incident": incident, "review_count": 0}
 
 
-def analyze_file(state: IncidentState) -> dict:
-    findings: list[Finding] = []
-    for event in state["incident"].events:
-        if event.event_type != "file_create" or not event.file_path:
-            continue
-
-        path = PureWindowsPath(event.file_path)
-        lowered = str(path).lower()
-        if path.suffix.lower() in {".exe", ".dll", ".scr", ".ps1"} and any(
-            marker in lowered for marker in ("\\temp\\", "\\appdata\\", "\\downloads\\")
-        ):
-            findings.append(
-                Finding(
-                    source="file",
-                    rule_id="FILE-001",
-                    severity=30,
-                    reason="Executable or script created in a user-writable directory",
-                    event_ids=[event.event_id],
-                )
-            )
-    return {"findings": findings}
+def analyze_file(
+    state: IncidentState, engine: DetectionRuleEngine | None = None
+) -> dict:
+    active_engine = engine or load_default_detection_engine()
+    return {"findings": active_engine.analyze(state["incident"].events, "file")}
 
 
-def analyze_behavior(state: IncidentState) -> dict:
-    findings: list[Finding] = []
-    for event in state["incident"].events:
-        if event.event_type != "process_start":
-            continue
-
-        process = (event.process_name or "").lower()
-        parent = (event.parent_process or "").lower()
-        command = (event.command_line or "").lower()
-
-        if parent in OFFICE_PROCESSES and process in SCRIPT_PROCESSES:
-            findings.append(
-                Finding(
-                    source="behavior",
-                    rule_id="PROC-001",
-                    severity=40,
-                    reason="Office application spawned a script interpreter",
-                    event_ids=[event.event_id],
-                )
-            )
-        if process in {"powershell.exe", "pwsh.exe"} and any(
-            marker in command for marker in (" -enc ", " -encodedcommand ", "frombase64string")
-        ):
-            findings.append(
-                Finding(
-                    source="behavior",
-                    rule_id="PROC-002",
-                    severity=35,
-                    reason="PowerShell used an encoded or Base64-oriented command",
-                    event_ids=[event.event_id],
-                )
-            )
-    return {"findings": findings}
+def analyze_behavior(
+    state: IncidentState, engine: DetectionRuleEngine | None = None
+) -> dict:
+    active_engine = engine or load_default_detection_engine()
+    return {"findings": active_engine.analyze(state["incident"].events, "behavior")}
 
 
-def analyze_network(state: IncidentState) -> dict:
-    findings: list[Finding] = []
-    for event in state["incident"].events:
-        if event.event_type != "network_connect" or not event.destination_ip:
-            continue
-        try:
-            destination = ipaddress.ip_address(event.destination_ip)
-        except ValueError:
-            continue
+def analyze_network(
+    state: IncidentState, engine: DetectionRuleEngine | None = None
+) -> dict:
+    active_engine = engine or load_default_detection_engine()
+    return {"findings": active_engine.analyze(state["incident"].events, "network")}
 
-        process = (event.process_name or "").lower()
-        if destination.is_global and process in SCRIPT_PROCESSES:
-            findings.append(
-                Finding(
-                    source="network",
-                    rule_id="NET-001",
-                    severity=20,
-                    reason="Script interpreter connected to a public IP address",
-                    event_ids=[event.event_id],
-                )
-            )
-    return {"findings": findings}
+
+def correlate_events(
+    state: IncidentState, engine: EventCorrelationEngine | None = None
+) -> dict:
+    active_engine = engine or EventCorrelationEngine()
+    chains, findings = active_engine.correlate(state["incident"].events)
+    return {"attack_chains": chains, "findings": findings}
 
 
 def synthesize_incident(state: IncidentState, model_adapter: ModelAdapter) -> dict:
