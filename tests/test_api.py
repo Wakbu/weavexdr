@@ -149,5 +149,6 @@ def test_authenticated_shutdown_runs_the_desktop_callback():
         response = shutdown_client.post("/shutdown", headers=AUTH)
         assert response.json() == {"status": "shutting_down"}
         assert stopped.wait(timeout=1)
+        assert runtime.shutdown_event.is_set()
     finally:
         store.close()

@@ -4,12 +4,13 @@ import hmac
 import logging
 import os
 import sys
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from queue import Empty
-from threading import RLock
+from threading import Event, RLock
 from uuid import uuid4
 
 import uvicorn
@@ -83,6 +84,7 @@ class ApiRuntime:
         }
     )
     shutdown_callback: Callable[[], None] | None = None
+    shutdown_event: Event = field(default_factory=Event)
     commands: dict[str, ResponseCommand] = field(default_factory=dict)
     previews: dict[str, DryRunResult] = field(default_factory=dict)
     lock: RLock = field(default_factory=RLock)
@@ -251,6 +253,9 @@ def create_app(
             raise HTTPException(status_code=503, detail="desktop shutdown is unavailable")
         # Uvicorn은 현재 응답을 마친 뒤 should_exit를 확인한다. 번들 환경에서
         # background task 실행이 늦어지는 경우를 피하려고 플래그를 즉시 설정한다.
+        # 모든 브라우저 탭의 스트리밍 응답을 먼저 끝내야 Uvicorn이 활성 연결을
+        # 기다리지 않고 실제 EXE 프로세스까지 종료할 수 있다.
+        runtime.shutdown_event.set()
         runtime.shutdown_callback()
         return {"status": "shutting_down"}
 
@@ -259,13 +264,16 @@ def create_app(
         subscriber = runtime.event_broker.subscribe()
 
         def event_stream():
+            next_heartbeat = time.monotonic() + 15
             try:
-                while True:
+                while not runtime.shutdown_event.is_set():
                     try:
-                        report = subscriber.get(timeout=15)
+                        report = subscriber.get(timeout=0.25)
                         yield f"event: incident\ndata: {report.model_dump_json()}\n\n"
                     except Empty:
-                        yield ": heartbeat\n\n"
+                        if time.monotonic() >= next_heartbeat:
+                            yield ": heartbeat\n\n"
+                            next_heartbeat = time.monotonic() + 15
             finally:
                 runtime.event_broker.unsubscribe(subscriber)
 
