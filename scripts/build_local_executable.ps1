@@ -6,6 +6,7 @@ $temporaryOutput = Join-Path $workRoot "output"
 $targetExecutable = Join-Path $projectRoot "WeaveXDR.exe"
 if (-not (Test-Path -LiteralPath $pythonPath -PathType Leaf)) { throw "Project virtual environment was not found." }
 
+# Uvicorn은 loop와 HTTP 구현을 문자열로 동적 import하므로 전체 하위 모듈을 포함해야 한다.
 & $pythonPath -m PyInstaller `
     --noconfirm `
     --clean `
@@ -17,6 +18,7 @@ if (-not (Test-Path -LiteralPath $pythonPath -PathType Leaf)) { throw "Project v
     --add-data "$(Join-Path $projectRoot 'src\xdr_graph\static');xdr_graph/static" `
     --collect-all langgraph `
     --collect-all charset_normalizer `
+    --collect-all uvicorn `
     --distpath $temporaryOutput `
     --workpath (Join-Path $workRoot "work") `
     --specpath (Join-Path $workRoot "spec") `

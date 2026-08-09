@@ -6,12 +6,25 @@ import zipfile
 from pathlib import Path
 
 from xdr_graph.logging_setup import configure_rotating_logging
+from xdr_graph.desktop import verify_embedded_server
 from xdr_graph.release_validation import validate_windows_package
 from xdr_graph.update_manager import apply_update, rollback_update
 from xdr_graph.windows_service import SERVICE_NAME
 
 
 PROJECT_ROOT = Path(__file__).parents[1]
+
+
+def test_embedded_uvicorn_server_returns_health():
+    from fastapi import FastAPI
+
+    app = FastAPI()
+
+    @app.get("/health")
+    def health():
+        return {"status": "ok"}
+
+    verify_embedded_server(app)
 
 
 def test_log_rotation_limits_backup_files_and_preserves_utf8(tmp_path):
