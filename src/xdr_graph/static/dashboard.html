@@ -24,7 +24,9 @@
   <div class="cards"><div class="card"><div>전체 사건</div><div class="value" id="total">0</div></div><div class="card"><div>의심</div><div class="value suspicious" id="suspicious">0</div></div><div class="card"><div>검토 필요</div><div class="value needs_review" id="review">0</div></div></div>
   <main><section><h2>최근 사건</h2><table><thead><tr><th>사건</th><th>판정</th><th>점수</th></tr></thead><tbody id="incidents"></tbody></table></section><section><h2>증거·설정</h2><pre id="detail">사건을 선택하세요.</pre><h3>정책과 모델</h3><pre id="settings">연결 후 표시됩니다.</pre></section></main>
   <script>
-    const state = { token: sessionStorage.getItem('weavexdr-token') || '', incidents: [], streaming: false };
+    const fragmentToken = new URLSearchParams(location.hash.slice(1)).get('token') || '';
+    const state = { token: fragmentToken || sessionStorage.getItem('weavexdr-token') || '', incidents: [], streaming: false };
+    if (fragmentToken) { sessionStorage.setItem('weavexdr-token', fragmentToken); history.replaceState(null, '', location.pathname); }
     const auth = () => ({ Authorization: `Bearer ${state.token}` });
     async function loadIncidents() {
       const response = await fetch('/incidents', { headers: auth() });

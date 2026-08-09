@@ -83,6 +83,7 @@ def test_windows_package_validation_checks_version_and_required_files(tmp_path):
     with zipfile.ZipFile(package_path, "w") as package:
         package.writestr("install.ps1", "Write-Host 'install'")
         package.writestr("uninstall.ps1", "Write-Host 'uninstall'")
+        package.writestr("WeaveXDR.exe", b"portable executable placeholder")
         package.writestr("personal_xdr_graph-0.1.0.whl", b"placeholder")
         package.writestr("weavexdr-release.json", json.dumps({"version": "20260809.1"}))
     assert validate_windows_package(package_path) == []

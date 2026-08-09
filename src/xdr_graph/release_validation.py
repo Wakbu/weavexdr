@@ -15,6 +15,7 @@ REQUIRED_DOCUMENTS = (
     "docs/OPERATIONS.md",
 )
 REQUIRED_WINDOWS_PACKAGE_FILES = {
+    "WeaveXDR.exe",
     "install.ps1",
     "uninstall.ps1",
     "weavexdr-release.json",

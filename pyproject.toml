@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8,<10", "httpx>=0.28,<1"]
+dev = ["pytest>=8,<10", "httpx>=0.28,<1", "pyinstaller>=6,<7"]
 
 [project.scripts]
 xdr-graph = "xdr_graph.cli:main"

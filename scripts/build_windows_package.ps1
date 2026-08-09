@@ -8,12 +8,14 @@ $distRoot = Join-Path $projectRoot "dist"
 $stageRoot = Join-Path $distRoot "weavexdr-$Version-windows"
 $pythonPath = Join-Path $projectRoot ".venv\Scripts\python.exe"
 if (-not (Test-Path -LiteralPath $pythonPath -PathType Leaf)) { throw "Project virtual environment was not found." }
+& (Join-Path $PSScriptRoot "build_local_executable.ps1")
 New-Item -ItemType Directory -Path $distRoot -Force | Out-Null
 & $pythonPath -m pip wheel $projectRoot --no-deps --wheel-dir $distRoot
 if (Test-Path -LiteralPath $stageRoot) { Remove-Item -LiteralPath $stageRoot -Recurse -Force }
 New-Item -ItemType Directory -Path $stageRoot | Out-Null
 $wheel = Get-ChildItem -LiteralPath $distRoot -Filter "personal_xdr_graph-*.whl" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 Copy-Item -LiteralPath $wheel.FullName -Destination $stageRoot
+Copy-Item -LiteralPath (Join-Path $projectRoot "WeaveXDR.exe") -Destination $stageRoot
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "install.ps1") -Destination $stageRoot
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "uninstall.ps1") -Destination $stageRoot
 $manifest = @{ version = $Version; format = "weavexdr-windows-package-v1" } | ConvertTo-Json

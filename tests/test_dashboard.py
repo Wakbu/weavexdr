@@ -66,6 +66,8 @@ def test_dashboard_and_settings_are_available_without_rendering_event_html():
         assert "최근 사건" in dashboard.text
         assert "cell.textContent" in dashboard.text
         assert "row.innerHTML" not in dashboard.text
+        assert "location.hash.slice(1)" in dashboard.text
+        assert "history.replaceState" in dashboard.text
 
         assert client.get("/settings").status_code == 401
         settings = client.get("/settings", headers=AUTH).json()

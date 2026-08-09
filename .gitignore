@@ -4,5 +4,11 @@ __pycache__/
 .pytest_cache/
 *.egg-info/
 dist/
+build/
+WeaveXDR.exe
+# 로컬 작업 지침과 진행 기록은 PC에만 유지한다.
+AGENTS.md
+PROJECT_ROADMAP.md
+XDR_AI_그래프_엔지니어링_설계_정리.md
 data/*.db*
 data/quarantine/

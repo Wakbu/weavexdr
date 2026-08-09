@@ -11,7 +11,9 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\install.ps1
 ```
 
-설치기는 `%ProgramFiles%\WeaveXDR`에 전용 가상환경과 wheel을 설치하고 `WeaveXDR` Windows 서비스를 자동 시작으로 등록한다. 서비스는 일반 분석·저장·loopback API를 제공한다. 방화벽 대응 등 관리자 조치는 기존 승인 및 재검증 정책을 별도로 통과해야 한다.
+ZIP의 `WeaveXDR.exe`는 설치 없이 실행하는 로컬 대시보드 실행본이다. 소스 폴더에서는 프로젝트 루트의 동일한 파일 하나를 현재 버전으로 유지하고, 새 빌드가 완전히 성공한 뒤 기존 파일을 교체한다.
+
+`install.ps1`은 `%ProgramFiles%\WeaveXDR`에 전용 가상환경과 wheel을 설치하고 `WeaveXDR` Windows 서비스를 자동 시작으로 등록한다. 서비스는 일반 분석·저장·loopback API를 제공한다. 방화벽 대응 등 관리자 조치는 기존 승인 및 재검증 정책을 별도로 통과해야 한다.
 
 개발 PC에서는 서비스 등록을 자동 검증하지 않는다. 이는 관리자 권한과 시스템 변경을 수반하므로 실제 설치 대상에서 사용자가 설치 스크립트를 명시적으로 실행한다.
 
