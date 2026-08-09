@@ -11,5 +11,7 @@ AGENTS.md
 PROJECT_ROADMAP.md
 XDR_AI_그래프_엔지니어링_설계_정리.md
 LOCAL_ISSUES.md
+PROJECT_CONTEXT.md
+FUTURE_BACKLOG.md
 data/*.db*
 data/quarantine/
