@@ -11,7 +11,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from xdr_graph.models import IncidentReport
 
 
-DEFAULT_RESPONSE_POLICY_PATH = Path(__file__).parents[2] / "config" / "response-policy.json"
+_packaged_config = Path(__file__).parent / "config"
+_source_config = Path(__file__).parents[2] / "config"
+DEFAULT_RESPONSE_POLICY_PATH = (_packaged_config if _packaged_config.is_dir() else _source_config) / "response-policy.json"
 ResponseAction = Literal[
     "terminate_process", "quarantine_file", "block_network", "collect_additional_evidence"
 ]

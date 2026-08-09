@@ -13,6 +13,7 @@ dependencies = [
     "yara-python>=4.5,<5",
     "fastapi>=0.116,<1",
     "uvicorn>=0.35,<1",
+    "pywin32>=311; sys_platform == 'win32'",
 ]
 
 [project.optional-dependencies]
@@ -20,9 +21,13 @@ dev = ["pytest>=8,<10", "httpx>=0.28,<1"]
 
 [project.scripts]
 xdr-graph = "xdr_graph.cli:main"
+xdr-service = "xdr_graph.windows_service:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/xdr_graph"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"config" = "xdr_graph/config"
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

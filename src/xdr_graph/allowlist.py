@@ -10,7 +10,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from xdr_graph.models import Finding, SecurityEvent, SuppressedFinding
 
 
-DEFAULT_ALLOWLIST_PATH = Path(__file__).parents[2] / "config" / "allowlist.json"
+_packaged_config = Path(__file__).parent / "config"
+_source_config = Path(__file__).parents[2] / "config"
+DEFAULT_ALLOWLIST_PATH = (_packaged_config if _packaged_config.is_dir() else _source_config) / "allowlist.json"
 
 
 class AllowlistMatch(BaseModel):

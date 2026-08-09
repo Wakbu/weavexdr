@@ -10,7 +10,9 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from xdr_graph.models import Finding
 
 
-DEFAULT_POLICY_PATH = Path(__file__).parents[2] / "config" / "risk-policy.json"
+_packaged_config = Path(__file__).parent / "config"
+_source_config = Path(__file__).parents[2] / "config"
+DEFAULT_POLICY_PATH = (_packaged_config if _packaged_config.is_dir() else _source_config) / "risk-policy.json"
 
 
 class RiskDecision(BaseModel):

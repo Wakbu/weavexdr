@@ -1,0 +1,53 @@
+# WeaveXDR 운영·복구 안내
+
+## Windows 설치
+
+지원 기준은 Windows 11과 Python 3.11 이상이다. 관리자 PowerShell에서 32자 이상의 API 토큰과 16자 이상의 개인정보 salt를 시스템 환경 변수로 먼저 등록한다. 실제 값은 문서·설정·명령 기록에 남기지 않는다.
+
+```powershell
+[Environment]::SetEnvironmentVariable('WEAVEXDR_API_TOKEN', '<32자 이상>', 'Machine')
+[Environment]::SetEnvironmentVariable('WEAVEXDR_PRIVACY_SALT', '<16자 이상>', 'Machine')
+Set-ExecutionPolicy -Scope Process Bypass
+.\install.ps1
+```
+
+설치기는 `%ProgramFiles%\WeaveXDR`에 전용 가상환경과 wheel을 설치하고 `WeaveXDR` Windows 서비스를 자동 시작으로 등록한다. 서비스는 일반 분석·저장·loopback API를 제공한다. 방화벽 대응 등 관리자 조치는 기존 승인 및 재검증 정책을 별도로 통과해야 한다.
+
+개발 PC에서는 서비스 등록을 자동 검증하지 않는다. 이는 관리자 권한과 시스템 변경을 수반하므로 실제 설치 대상에서 사용자가 설치 스크립트를 명시적으로 실행한다.
+
+## 제거
+
+```powershell
+.\uninstall.ps1
+```
+
+기본 제거는 프로그램만 삭제하고 `%ProgramData%\WeaveXDR`의 사건 DB와 로그를 보존한다. 데이터까지 지우려면 복구가 불가능함을 확인한 뒤 `-RemoveData`를 명시한다.
+
+## 로그와 디스크
+
+서비스 로그는 `%ProgramData%\WeaveXDR\logs`에 UTF-8로 기록한다. 기본 파일당 10 MiB, 백업 5개로 회전하므로 로그 사용량은 약 60 MiB 이내다. 사건 DB와 격리 저장소는 별도의 보존 정책을 적용한다.
+
+## 업데이트와 롤백
+
+업데이트는 다음 순서로 수행한다.
+
+1. 릴리스 자산의 SHA-256을 게시 값과 비교한다.
+2. 압축 경로 탈출을 검사한 뒤 설치 폴더와 같은 볼륨의 임시 폴더에 푼다.
+3. 기존 설치 폴더 전체를 rollback 폴더로 이름 변경한다.
+4. 새 버전을 원래 경로로 전환하고 서비스·health·대시보드를 확인한다.
+5. 시작 또는 회귀 검사 실패 시 `rollback_update`로 기존 폴더를 되돌린다.
+
+Windows 설치 ZIP은 신규 설치용이며 실행 중인 설치 폴더에 직접 덮어쓰지 않는다. 자동 업데이트 채널을 공개하기 전에는 서명된 런타임 전용 아카이브만 업데이트 관리자에 전달한다.
+
+## 장애 복구
+
+- API가 열리지 않으면 서비스 상태, `%ProgramData%\WeaveXDR\logs\weavexdr.log`, 시스템 환경 변수 존재를 순서대로 확인한다.
+- 로컬 모델이 중단되면 규칙 기반 모델로 자동 대체된다. Ollama 복구 후 새 사건부터 다시 로컬 모델을 사용한다.
+- 수집 저장 실패 시 메모리 버퍼는 배치를 유지하고 다음 flush에서 재시도한다.
+- 감사 로그 무결성 검사가 실패하면 실제 대응을 중지하고 백업본과 비교한다.
+- 격리 복원은 원래 경로와 해시를 재검증하고 사용자 확인 후 수행한다.
+- DB 손상 시 서비스를 중지하고 원본 DB를 보존한 채 최신 백업으로 복구한다.
+
+## 릴리스 후보 확인
+
+`python -m pytest` 전체 통과, `python scripts/validate_release.py` 통과, 설치 ZIP 구성과 버전 형식, UTF-8 한국어/영어 표시, GitHub 릴리스 본문과 다운로드 자산을 확인한다.

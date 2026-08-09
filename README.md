@@ -186,7 +186,7 @@ powershell.exe -ExecutionPolicy Bypass -File .\scripts\verify_sysmon.ps1 -Output
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-테스트는 그래프 판정, 수집·저장, 탐지·오탐 관리, 실제 대응, 인증된 로컬 API, 대시보드, 지식 그래프, 검색 비교와 장기 반복 입력을 검증한다. 현재 전체 결과는 `109 passed`, 기준 평가는 `30/30 passed`다.
+테스트는 그래프 판정, 수집·저장, 탐지·오탐 관리, 실제 대응, 인증된 로컬 API, 대시보드, 지식 그래프, 검색 비교, 장기 반복 입력과 배포·복구를 검증한다. 현재 전체 결과는 `114 passed`, 기준 평가는 `30/30 passed`다.
 
 ## 기준 평가
 
@@ -202,13 +202,16 @@ powershell.exe -ExecutionPolicy Bypass -File .\scripts\verify_sysmon.ps1 -Output
 .\.venv\Scripts\python.exe -m xdr_graph.benchmark .\evaluations\incidents.json --model qwen3:8b
 ```
 
-## 범위 밖
+## Windows 설치와 운영
 
-다음 항목은 후속 채팅에서 별도로 구현한다.
+`scripts/build_windows_package.ps1`은 정책 파일이 포함된 wheel과 설치·제거 스크립트를 `dist/weavexdr-YYYYMMDD.PATCH-windows.zip`으로 만든다. 설치본은 pywin32 기반 `WeaveXDR` Windows 서비스, 크기 제한 로그 회전과 checksum 검증 업데이트·롤백 기반을 포함한다. 시스템 서비스 등록은 관리자 권한의 실제 설치 대상에서만 사용자가 실행한다.
 
-- Sysmon 실시간 이벤트 수집
-- 파일 검사 결과와 사건 그래프의 상관분석
-- 실제 프로세스 종료와 파일 격리
-- 장기 보안 지식 그래프
+설치, 제거, 비밀 환경 변수, 장애 복구와 업데이트 절차는 [운영·복구 안내](docs/OPERATIONS.md)를 참고한다.
+
+## 현재 범위 밖
+
+- 여러 PC를 중앙 관리하는 기업용 콘솔과 클라우드 수집
+- 공개 서명 키와 자동 업데이트 배포 채널
+- 사용자 승인 없는 완전 무인 실제 대응
 
 상세 설계는 [XDR AI 그래프 엔지니어링 설계 정리](XDR_AI_그래프_엔지니어링_설계_정리.md), 전체 작업 순서와 진행 상태는 [프로젝트 로드맵](PROJECT_ROADMAP.md), 외부 공격 기준은 [탐지 기준 및 위협 정보 정책](docs/DETECTION_POLICY.md), 대응 제약은 [보안 및 대응 정책](docs/SECURITY.md)을 참고한다.
