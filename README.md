@@ -186,7 +186,7 @@ powershell.exe -ExecutionPolicy Bypass -File .\scripts\verify_sysmon.ps1 -Output
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-테스트는 그래프 판정, 수집·저장, 탐지·오탐 관리, 실제 대응, 인증된 로컬 API, 대시보드, 지식 그래프와 검색 비교를 검증한다. 현재 전체 결과는 `105 passed`, 기준 평가는 `30/30 passed`다.
+테스트는 그래프 판정, 수집·저장, 탐지·오탐 관리, 실제 대응, 인증된 로컬 API, 대시보드, 지식 그래프, 검색 비교와 장기 반복 입력을 검증한다. 현재 전체 결과는 `109 passed`, 기준 평가는 `30/30 passed`다.
 
 ## 기준 평가
 
