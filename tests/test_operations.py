@@ -6,7 +6,7 @@ import zipfile
 from pathlib import Path
 
 from xdr_graph.logging_setup import configure_rotating_logging
-from xdr_graph.desktop import verify_embedded_server
+from xdr_graph.desktop import choose_server_port, verify_embedded_server
 from xdr_graph.release_validation import validate_windows_package
 from xdr_graph.update_manager import apply_update, rollback_update
 from xdr_graph.windows_service import SERVICE_NAME
@@ -138,3 +138,14 @@ def test_release_build_uses_an_isolated_verification_port_and_keeps_three_versio
     assert "WEAVEXDR_PORT" in build_script
     assert "TcpListener" in build_script
     assert "Select-Object -Skip 3" in package_script
+
+
+def test_explicit_desktop_port_is_validated():
+    assert choose_server_port("18765") == 18765
+    for invalid_port in ("not-a-number", "80", "70000"):
+        try:
+            choose_server_port(invalid_port)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"invalid port must be rejected: {invalid_port}")

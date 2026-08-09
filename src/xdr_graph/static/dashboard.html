@@ -91,7 +91,6 @@
     .settings-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
     .setting-card { padding:20px; } .setting-card h3 { font-size:14px; margin:0 0 5px; } .setting-card>p { color:var(--muted); font-size:11px; margin:0 0 17px; }
     .setting-list { display:grid; gap:10px; } .setting-row { display:flex; justify-content:space-between; gap:20px; border-top:1px solid var(--line-soft); padding-top:10px; font-size:11px; } .setting-row span { color:var(--muted); } .setting-row strong { text-align:right; }
-    .token-box { display:flex; gap:8px; margin-top:12px; } .token-box input { min-width:0; flex:1; border:1px solid var(--line); background:#081521; color:var(--text); padding:9px; border-radius:7px; }
     .modal-backdrop { position:fixed; inset:0; background:#02070dbb; backdrop-filter:blur(5px); z-index:40; display:none; place-items:center; padding:20px; }
     .modal-backdrop.open { display:grid; } .modal { width:min(430px,100%); padding:24px; background:var(--surface); border:1px solid #315270; border-radius:14px; box-shadow:0 24px 80px #0009; }
     .modal h2 { margin:0 0 8px; } .modal p { color:var(--muted); font-size:12px; line-height:1.6; } .modal input { width:100%; margin:12px 0; border:1px solid var(--line); background:#081521; color:#fff; padding:11px; border-radius:8px; }
@@ -234,7 +233,7 @@
     .mitre-tag strong { color:var(--amber); font-weight:600; margin-right:5px; }
     .health-row,.setting-row { font-size:12px; }.setting-card>p { font-size:12px; }
     .detail-item,.evidence-card,.timeline-item,.action-item { border-radius:4px; background:#111418; }
-    .search,select,.token-box input,.modal input { border-radius:4px; background:#111418; }
+    .search,select { border-radius:4px; background:#111418; }
     .modal { border-radius:7px; }
     .toast { border-radius:5px; }
     @media (max-width:1180px) { .topology-panel,.trend-panel{grid-column:span 7}.geo-card,.severity-panel{grid-column:span 5}.investigation-shell{grid-template-columns:1fr}.side-stack{grid-template-columns:repeat(2,minmax(0,1fr))} }
@@ -298,18 +297,18 @@
           <div class="card setting-card"><h3>데이터 수집</h3><p>실시간 사건이 비어 있을 때 가장 먼저 확인할 항목입니다.</p><div class="setting-list" id="collector-settings"></div></div>
           <div class="card setting-card"><h3>탐지 엔진</h3><p>판정에 사용되는 규칙과 위험 점수 정책입니다.</p><div class="setting-list" id="policy-settings"></div></div>
           <div class="card setting-card"><h3>AI 모델</h3><p>로컬 모델 상태와 규칙 기반 안전 대체 경로입니다.</p><div class="setting-list" id="model-settings"></div></div>
-          <div class="card setting-card"><h3>로컬 연결</h3><p>EXE가 실행할 때 자동 인증하며 같은 브라우저의 새 탭에서도 세션을 재사용합니다. 직접 API를 호출할 때만 고정 토큰이 필요합니다.</p><div class="setting-list"><div class="setting-row"><span>API 주소</span><strong>127.0.0.1:8765</strong></div><div class="setting-row"><span>인증 방식</span><strong>프로세스 전용 보안 세션</strong></div><div class="setting-row"><span>접근 범위</span><strong>이 PC만 허용</strong></div></div><div class="token-box"><input id="settings-token" type="password" placeholder="고정 API 토큰 (32자 이상)"><button class="secondary" id="save-token">세션 다시 연결</button></div></div>
+          <div class="card setting-card"><h3>로컬 연결</h3><p>EXE가 현재 브라우저를 자동 인증합니다. 사용자가 토큰을 발급하거나 입력할 필요가 없습니다.</p><div class="setting-list"><div class="setting-row"><span>API 주소</span><strong id="local-api-address"></strong></div><div class="setting-row"><span>인증 방식</span><strong>EXE 자동 보안 세션</strong></div><div class="setting-row"><span>접근 범위</span><strong>이 PC만 허용</strong></div></div></div>
         </div>
       </section>
     </main>
   </div>
 </div>
 
-<div class="modal-backdrop" id="auth-modal"><div class="modal"><h2>로컬 API 다시 연결</h2><p>현재 브라우저에 유효한 세션이 없습니다. WeaveXDR를 종료한 뒤 EXE를 다시 실행하면 자동 연결됩니다. 고정 토큰을 설정한 경우에만 아래에 입력하세요.</p><input id="modal-token" type="password" placeholder="고정 API 토큰 (32자 이상)"><button class="primary" id="modal-connect">세션 연결</button></div></div>
+<div class="modal-backdrop" id="auth-modal"><div class="modal"><h2>자동 연결을 완료하지 못했습니다</h2><p>별도 인증 정보 입력은 필요하지 않습니다. 이 창을 닫고 최신 WeaveXDR.exe를 다시 실행하면 사용 가능한 포트에서 새 보안 세션을 자동으로 연결합니다.</p><button class="primary" id="auth-retry">자동 연결 다시 시도</button></div></div>
 <div class="toast" id="toast"></div>
 
 <script>
-  const fragmentToken = new URLSearchParams(location.hash.slice(1)).get('token') || '';
+  let launchToken = new URLSearchParams(location.hash.slice(1)).get('token') || '';
   const state = { token: '', incidents: [], settings: null, status: null, selected: null, tab: 'graph', streaming: false, streamController: null, statusTimer: null, graphViews: new Map(), overviewRenderKey: '' };
   const pageInfo = { overview:['보안 개요','현재 PC의 탐지 상태와 주요 사건을 확인합니다.'], incidents:['사건','탐지된 사건을 필터링하고 우선순위에 따라 조사합니다.'], investigation:['조사','연결된 증거와 공격 흐름을 따라 사건을 분석합니다.'], settings:['설정','수집기, 탐지 정책, 모델과 연결 상태를 관리합니다.'] };
   const verdictLabel = { suspicious:'고위험', needs_review:'검토 필요', benign:'정상' };
@@ -326,9 +325,9 @@
   }
   async function establishSession(token) {
     const response=await fetch('/session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})});
-    if(!response.ok)throw new Error('API 토큰이 올바르지 않거나 32자보다 짧습니다.');
+    if(!response.ok)throw new Error('EXE 자동 인증 정보를 서버가 승인하지 않았습니다.');
     // 원문 토큰은 HttpOnly 프로세스 세션으로 교환한 즉시 메모리와 주소에서 제거한다.
-    state.token='';history.replaceState(null,'',location.pathname+location.search);
+    state.token='';launchToken='';history.replaceState(null,'',location.pathname+location.search);
   }
   async function loadAll() {
     try {
@@ -503,7 +502,7 @@
   async function configureCollector(){if(!confirm('Windows 관리자 권한으로 Sysmon 수집 권한을 설정할까요? UAC 확인창이 표시됩니다.'))return;try{await api('/collector/configure',{method:'POST'});toast('Windows UAC 확인창에서 허용을 선택하세요. 설정 후 수집기가 자동으로 다시 연결됩니다.');}catch(error){toast(error.message);}}
   async function streamEvents(){state.streaming=true;const controller=new AbortController();state.streamController=controller;try{const response=await fetch('/events',{headers:authHeaders(),signal:controller.signal});if(!response.ok||!response.body)return;const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='';while(true){const{value,done}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});const messages=buffer.split('\n\n');buffer=messages.pop();messages.forEach(message=>{const line=message.split('\n').find(x=>x.startsWith('data:'));if(!line)return;const item=JSON.parse(line.slice(5));state.incidents=[item,...state.incidents.filter(x=>x.incident_id!==item.incident_id)];renderIncidentViews({updatedIncidentId:item.incident_id});});}}catch(error){if(error.name!=='AbortError')console.warn('실시간 사건 연결이 종료되었습니다.',error);}finally{if(state.streamController===controller)state.streamController=null;state.streaming=false;}}
   function showAuth(){document.querySelector('#auth-modal').classList.add('open');}
-  async function saveToken(value){const token=value.trim();if(token.length<32){toast('API 토큰은 32자 이상이어야 합니다.');return;}try{await establishSession(token);document.querySelector('#auth-modal').classList.remove('open');document.querySelector('#modal-token').value='';document.querySelector('#settings-token').value='';await loadAll();toast('브라우저 보안 세션을 연결했습니다.');}catch(error){toast(error.message);}}
+  async function retryAutomaticConnection(){if(!launchToken){toast('이 탭을 닫고 WeaveXDR.exe를 다시 실행하세요.');return;}try{await establishSession(launchToken);document.querySelector('#auth-modal').classList.remove('open');await loadAll();toast('자동 보안 세션을 연결했습니다.');}catch(error){toast(error.message);}}
   function toast(message){const box=document.querySelector('#toast');box.textContent=message;box.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>box.classList.remove('show'),3500);}
   const findingLabels={'PROC-001':'Office 프로그램이 스크립트 실행기를 호출함','PROC-002':'PowerShell에서 인코딩된 명령 사용','FILE-001':'사용자 쓰기 가능 경로에 실행 파일 또는 스크립트 생성','NET-001':'스크립트 실행기가 공인 IP에 연결함','CORR-001':'여러 보안 이벤트가 하나의 공격 흐름으로 연결됨'};
   function findingLabel(finding){return findingLabels[finding.rule_id]||finding.reason;}
@@ -518,10 +517,10 @@
   document.querySelector('#refresh').onclick=loadAll;document.querySelector('#incident-search').oninput=renderTables;document.querySelector('#verdict-filter').onchange=renderTables;
   document.querySelector('#collector-action').onclick=()=>document.querySelector('#collector-action').dataset.mode==='configure'?configureCollector():navigate('settings');
   document.querySelector('#investigation-tabs').onclick=event=>{const button=event.target.closest('[data-tab]');if(!button)return;state.tab=button.dataset.tab;renderInvestigation();};
-  document.querySelector('#modal-connect').onclick=()=>saveToken(document.querySelector('#modal-token').value);document.querySelector('#save-token').onclick=()=>saveToken(document.querySelector('#settings-token').value);
+  document.querySelector('#auth-retry').onclick=retryAutomaticConnection;document.querySelector('#local-api-address').textContent=location.host;
   document.querySelector('#shutdown').onclick=async()=>{if(!confirm('WeaveXDR 서버를 종료할까요? 브라우저 탭도 더 이상 데이터를 불러올 수 없습니다.'))return;try{clearInterval(state.statusTimer);state.statusTimer=null;state.streamController?.abort();await api('/shutdown',{method:'POST'});setConnected(false);toast('WeaveXDR를 종료했습니다. 이 탭을 닫아도 됩니다.');setTimeout(()=>document.body.replaceChildren(node('div','empty','WeaveXDR가 종료되었습니다. 이 창을 닫아 주세요.')),700);}catch(error){if(!state.statusTimer)state.statusTimer=setInterval(refreshStatus,3000);toast(error.message);}};
   window.addEventListener('beforeunload',()=>state.streamController?.abort());
-  async function bootstrap(){renderTrend();if(fragmentToken){try{await establishSession(fragmentToken);}catch(error){showAuth();toast(error.message);return;}}await loadAll();state.statusTimer=setInterval(refreshStatus,3000);}
+  async function bootstrap(){renderTrend();if(launchToken){try{await establishSession(launchToken);}catch(error){showAuth();toast(error.message);return;}}await loadAll();state.statusTimer=setInterval(refreshStatus,3000);}
   bindDemoButtons(); bootstrap();
 </script>
 </body>

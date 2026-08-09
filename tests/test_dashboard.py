@@ -89,6 +89,11 @@ def test_dashboard_and_settings_are_available_without_rendering_event_html():
         assert "renderIncidentViews({updatedIncidentId:item.incident_id})" in dashboard.text
         assert 'id="mitre-strip"' in dashboard.text
         assert "graph-search" in dashboard.text
+        assert 'id="settings-token"' not in dashboard.text
+        assert 'id="modal-token"' not in dashboard.text
+        assert "saveToken(" not in dashboard.text
+        assert "별도 인증 정보 입력은 필요하지 않습니다" in dashboard.text
+        assert "location.host" in dashboard.text
 
         assert client.get("/settings").status_code == 401
         settings = client.get("/settings", headers=AUTH).json()
