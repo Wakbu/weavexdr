@@ -125,6 +125,10 @@ class KnowledgeGraphStore:
                 entity_id TEXT NOT NULL,
                 PRIMARY KEY(incident_id, entity_id)
             );
+            CREATE TABLE IF NOT EXISTS graph_incidents (
+                incident_id TEXT PRIMARY KEY,
+                observed_at TEXT NOT NULL
+            );
             CREATE INDEX IF NOT EXISTS ix_graph_edges_incident ON graph_edges(incident_id);
             CREATE INDEX IF NOT EXISTS ix_graph_incident_entity ON graph_incident_entities(entity_id);
             """
@@ -133,6 +137,10 @@ class KnowledgeGraphStore:
 
     def ingest_report(self, report: IncidentReport) -> None:
         observed_at = datetime.now(UTC).isoformat()
+        self.connection.execute(
+            "INSERT OR REPLACE INTO graph_incidents(incident_id, observed_at) VALUES (?, ?)",
+            (report.incident_id, observed_at),
+        )
         alert = self._entity("Alert", report.incident_id, {"verdict": report.verdict, "risk_score": report.risk_score})
         self._upsert_node(alert, observed_at, report.incident_id)
 
@@ -266,6 +274,25 @@ class KnowledgeGraphStore:
             recommended_backend="dedicated_graph_database" if dedicated else "sqlite",
             reason="노드가 임계값 이상이므로 전용 그래프 DB 검토" if dedicated else "개인용 단일 호스트 규모에서는 SQLite 운영 복잡도가 가장 낮음",
         )
+
+    def purge_incidents_before(self, cutoff: datetime) -> int:
+        if cutoff.tzinfo is None or cutoff.utcoffset() is None:
+            raise ValueError("cutoff must include a timezone offset")
+        incident_rows = self.connection.execute(
+            "SELECT incident_id FROM graph_incidents WHERE observed_at < ?",
+            (cutoff.astimezone(UTC).isoformat(),),
+        ).fetchall()
+        incident_ids = [row["incident_id"] for row in incident_rows]
+        for incident_id in incident_ids:
+            self.connection.execute("DELETE FROM graph_edges WHERE incident_id = ?", (incident_id,))
+            self.connection.execute("DELETE FROM graph_incident_entities WHERE incident_id = ?", (incident_id,))
+            self.connection.execute("DELETE FROM graph_incidents WHERE incident_id = ?", (incident_id,))
+        # 다른 사건에서도 쓰는 엔티티는 보존하고, 참조가 완전히 사라진 노드만 지운다.
+        self.connection.execute(
+            "DELETE FROM graph_nodes WHERE entity_id NOT IN (SELECT entity_id FROM graph_incident_entities)"
+        )
+        self.connection.commit()
+        return len(incident_ids)
 
     def _process_entity(self, event) -> GraphEntity | None:
         process_name = getattr(event, "process_name", None)
