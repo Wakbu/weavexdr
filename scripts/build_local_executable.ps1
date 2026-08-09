@@ -47,6 +47,7 @@ Copy-Item -LiteralPath $builtExecutable -Destination $targetExecutable -Force
 $previousSmokeTest = $env:WEAVEXDR_SMOKE_TEST
 $previousNoBrowser = $env:WEAVEXDR_NO_BROWSER
 $previousApiToken = $env:WEAVEXDR_API_TOKEN
+$previousPort = $env:WEAVEXDR_PORT
 $env:WEAVEXDR_SMOKE_TEST = "1"
 $env:WEAVEXDR_NO_BROWSER = "1"
 try {
@@ -72,12 +73,17 @@ finally {
 $verificationToken = "weavexdr-local-build-verification-token"
 $env:WEAVEXDR_API_TOKEN = $verificationToken
 $env:WEAVEXDR_NO_BROWSER = "1"
+# 현재 사용 중인 8765 인스턴스를 건드리지 않도록 OS에서 빈 loopback 포트를
+# 임시 배정받는다. EXE 자체는 환경 변수가 없을 때 계속 8765를 사용한다.
+$portProbe = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+$portProbe.Start()
+$verificationPort = ([System.Net.IPEndPoint]$portProbe.LocalEndpoint).Port
+$portProbe.Stop()
+$env:WEAVEXDR_PORT = [string]$verificationPort
+$baseUrl = "http://127.0.0.1:$verificationPort"
 $runtimeProcess = $null
 $serverProcess = $null
 try {
-    if (Get-NetTCPConnection -LocalPort 8765 -State Listen -ErrorAction SilentlyContinue) {
-        throw "Port 8765 is already in use. Close the running WeaveXDR instance before building."
-    }
     $runtimeInfo = New-Object System.Diagnostics.ProcessStartInfo
     $runtimeInfo.FileName = $targetExecutable
     $runtimeInfo.UseShellExecute = $false
@@ -87,7 +93,7 @@ try {
     $deadline = [DateTime]::UtcNow.AddSeconds(20)
     do {
         try {
-            $health = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:8765/health" -TimeoutSec 2
+            $health = Invoke-WebRequest -UseBasicParsing -Uri "$baseUrl/health" -TimeoutSec 2
         }
         catch {
             $health = $null
@@ -96,26 +102,26 @@ try {
     } while (-not $health -and [DateTime]::UtcNow -lt $deadline)
     if (-not $health -or $health.StatusCode -ne 200) { throw "Normal-mode executable health check failed." }
     # one-file PyInstaller는 부트로더와 실제 서버 프로세스가 다를 수 있으므로
-    # Start() 반환값이 아니라 8765 포트를 소유한 프로세스를 종료 검증 대상으로 삼는다.
-    $serverConnection = Get-NetTCPConnection -LocalPort 8765 -State Listen -ErrorAction Stop | Select-Object -First 1
+    # Start() 반환값이 아니라 검증 포트를 소유한 프로세스를 종료 대상으로 삼는다.
+    $serverConnection = Get-NetTCPConnection -LocalPort $verificationPort -State Listen -ErrorAction Stop | Select-Object -First 1
     $serverProcess = Get-Process -Id $serverConnection.OwningProcess -ErrorAction Stop
     if ($serverProcess.Path -ne (Get-Item -LiteralPath $targetExecutable).FullName) {
-        throw "Port 8765 is not owned by the packaged WeaveXDR executable."
+        throw "Verification port is not owned by the packaged WeaveXDR executable."
     }
-    $dashboard = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:8765/dashboard" -TimeoutSec 3
+    $dashboard = Invoke-WebRequest -UseBasicParsing -Uri "$baseUrl/dashboard" -TimeoutSec 3
     if ($dashboard.StatusCode -ne 200 -or $dashboard.Content -notmatch 'data-nav="overview"') {
         throw "Normal-mode executable dashboard check failed."
     }
-    $status = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:8765/status" -Headers $headers -TimeoutSec 3
+    $status = Invoke-WebRequest -UseBasicParsing -Uri "$baseUrl/status" -Headers $headers -TimeoutSec 3
     if ($status.StatusCode -ne 200) { throw "Authenticated status check failed." }
     # 브라우저는 Bearer 토큰을 계속 보관하지 않고 프로세스 전용 HttpOnly 세션으로
     # 교환하므로 실제 EXE에서도 쿠키 인증 경로를 별도로 확인한다.
     $sessionBody = @{ token = $verificationToken } | ConvertTo-Json
-    $sessionResponse = Invoke-WebRequest -UseBasicParsing -Method Post -Uri "http://127.0.0.1:8765/session" -ContentType "application/json" -Body $sessionBody -SessionVariable browserSession -TimeoutSec 3
+    $sessionResponse = Invoke-WebRequest -UseBasicParsing -Method Post -Uri "$baseUrl/session" -ContentType "application/json" -Body $sessionBody -SessionVariable browserSession -TimeoutSec 3
     if ($sessionResponse.StatusCode -ne 200) { throw "Browser session exchange failed." }
-    $cookieStatus = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:8765/status" -WebSession $browserSession -TimeoutSec 3
+    $cookieStatus = Invoke-WebRequest -UseBasicParsing -Uri "$baseUrl/status" -WebSession $browserSession -TimeoutSec 3
     if ($cookieStatus.StatusCode -ne 200) { throw "Browser cookie authentication failed." }
-    $shutdown = Invoke-WebRequest -UseBasicParsing -Method Post -Uri "http://127.0.0.1:8765/shutdown" -WebSession $browserSession -TimeoutSec 3
+    $shutdown = Invoke-WebRequest -UseBasicParsing -Method Post -Uri "$baseUrl/shutdown" -WebSession $browserSession -TimeoutSec 3
     if ($shutdown.StatusCode -ne 200) { throw "Executable shutdown request failed." }
     if (-not $serverProcess.WaitForExit(10000)) { throw "Executable did not stop after shutdown request." }
 }
@@ -126,6 +132,7 @@ finally {
     }
     $env:WEAVEXDR_API_TOKEN = $previousApiToken
     $env:WEAVEXDR_NO_BROWSER = $previousNoBrowser
+    $env:WEAVEXDR_PORT = $previousPort
 }
 $checksum = (Get-FileHash -LiteralPath $targetExecutable -Algorithm SHA256).Hash.ToLowerInvariant()
 Write-Host "Local executable replaced / 로컬 실행 파일 교체: $targetExecutable"

@@ -109,6 +109,11 @@ def main() -> None:
     if configured_token and len(configured_token) < 32:
         raise ValueError("WEAVEXDR_API_TOKEN must contain at least 32 characters")
     api_token = configured_token or secrets.token_urlsafe(32)
+    # 일반 사용은 기존 8765를 유지한다. 빌드 검증만 별도 환경 변수로 빈 포트를
+    # 지정해, 사용자가 실행 중인 정식 인스턴스를 종료하지 않고도 검사할 수 있다.
+    server_port = int(os.environ.get("WEAVEXDR_PORT", "8765"))
+    if not 1024 <= server_port <= 65535:
+        raise ValueError("WEAVEXDR_PORT must be between 1024 and 65535")
     store = SQLiteEventStore(data_root / "weavexdr.db")
     runtime = ApiRuntime(
         event_store=store,
@@ -125,11 +130,11 @@ def main() -> None:
         store.close()
         logger.info("desktop runtime smoke test passed")
         return
-    dashboard_url = f"http://127.0.0.1:8765/dashboard#{urlencode({'token': api_token})}"
+    dashboard_url = f"http://127.0.0.1:{server_port}/dashboard#{urlencode({'token': api_token})}"
     if os.environ.get("WEAVEXDR_NO_BROWSER") != "1":
         threading.Timer(1.0, lambda: webbrowser.open(dashboard_url)).start()
     logger.info("desktop runtime started")
-    server = build_embedded_server(app, port=8765)
+    server = build_embedded_server(app, port=server_port)
     runtime.shutdown_callback = lambda: setattr(server, "should_exit", True)
     runtime.collector_setup_callback = request_collector_access_setup
     ingestion_service = PersistentIngestionService(

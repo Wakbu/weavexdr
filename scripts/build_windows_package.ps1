@@ -32,4 +32,35 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
     [System.IO.Compression.CompressionLevel]::Optimal,
     $false
 )
+
+# dist는 로컬 전달·검증용 공간이므로 최신 세 버전만 유지한다. GitHub 릴리스는
+# 별도 보존되며, wheel처럼 버전 폴더 규칙과 무관한 파일은 삭제하지 않는다.
+$releaseEntries = Get-ChildItem -LiteralPath $distRoot | ForEach-Object {
+    if ($_.Name -match '^weavexdr-(\d{8})\.(\d+)-windows(?:\.zip)?$') {
+        [pscustomobject]@{
+            Entry = $_
+            Date = [int64]$Matches[1]
+            Patch = [int]$Matches[2]
+            Version = "$($Matches[1]).$($Matches[2])"
+        }
+    }
+}
+$expiredVersions = $releaseEntries |
+    Sort-Object Date, Patch -Descending |
+    Group-Object Version |
+    ForEach-Object { $_.Group[0] } |
+    Select-Object -Skip 3
+foreach ($expiredVersion in $expiredVersions) {
+    $releaseEntries | Where-Object Version -eq $expiredVersion.Version | ForEach-Object {
+        $target = $_.Entry
+        # 재귀 삭제 전에 대상의 절대 부모와 이름을 다시 검사해 dist 밖의 경로가
+        # 계산 오류로 삭제되는 일을 막는다.
+        $targetParent = if ($target -is [System.IO.DirectoryInfo]) { $target.Parent.FullName } else { $target.DirectoryName }
+        if ($targetParent -ne $distRoot -or $target.Name -notmatch '^weavexdr-\d{8}\.\d+-windows(?:\.zip)?$') {
+            throw "Unsafe release cleanup target: $($target.FullName)"
+        }
+        Remove-Item -LiteralPath $target.FullName -Recurse -Force
+        Write-Host "Removed expired local release: $($target.Name)"
+    }
+}
 Write-Host $archivePath

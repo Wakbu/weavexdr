@@ -83,6 +83,12 @@ def test_dashboard_and_settings_are_available_without_rendering_event_html():
         assert 'data-tab="graph"' in dashboard.text
         assert "createElementNS" in dashboard.text
         assert "'/collector/configure'" in dashboard.text
+        assert "graphViews: new Map()" in dashboard.text
+        assert "addEventListener('wheel'" in dashboard.text
+        assert "addEventListener('pointerdown'" in dashboard.text
+        assert "renderIncidentViews({updatedIncidentId:item.incident_id})" in dashboard.text
+        assert 'id="mitre-strip"' in dashboard.text
+        assert "graph-search" in dashboard.text
 
         assert client.get("/settings").status_code == 401
         settings = client.get("/settings", headers=AUTH).json()

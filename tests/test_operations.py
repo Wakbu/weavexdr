@@ -122,4 +122,19 @@ def test_sysmon_access_script_is_powershell5_safe_and_reads_acl_attribute():
     # 오해하므로 배포 스크립트는 UTF-8 BOM을 반드시 유지한다.
     assert script_bytes.startswith(b"\xef\xbb\xbf")
     assert "@channelAccess" in script_text
+    assert "$accessNode.Value" in script_text
     assert "[switch]$CheckOnly" in script_text
+
+
+def test_release_build_uses_an_isolated_verification_port_and_keeps_three_versions():
+    build_script = (PROJECT_ROOT / "scripts" / "build_local_executable.ps1").read_text(
+        encoding="utf-8-sig"
+    )
+    package_script = (PROJECT_ROOT / "scripts" / "build_windows_package.ps1").read_text(
+        encoding="utf-8-sig"
+    )
+
+    # 실행 중인 사용자의 8765 서버를 끊지 않고 실제 EXE를 검증해야 한다.
+    assert "WEAVEXDR_PORT" in build_script
+    assert "TcpListener" in build_script
+    assert "Select-Object -Skip 3" in package_script

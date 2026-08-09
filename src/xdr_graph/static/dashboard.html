@@ -109,18 +109,18 @@
       --green:#6fd5a0; --purple:#aa91e8;
       font-family:"Segoe UI Variable", "Pretendard", "Noto Sans KR", system-ui, sans-serif;
     }
-    body { background:var(--bg); font-size:13px; }
+    body { background:var(--bg); font-size:14px; }
     .shell { grid-template-columns:218px 1fr; }
     .sidebar { padding:20px 13px; background:var(--sidebar); }
     .brand { padding:0 8px 27px; font-size:17px; letter-spacing:.1px; }
     .brand-mark { width:30px; height:30px; clip-path:none; border-radius:6px; background:#eceff3; color:#101216; font-size:11px; letter-spacing:.5px; }
-    .nav-label { color:#686f78; font-size:9px; padding:7px 10px; }
-    .nav button { border-radius:5px; padding:10px; font-size:12px; }
+    .nav-label { color:#686f78; font-size:10px; padding:7px 10px; }
+    .nav button { border-radius:5px; padding:10px; font-size:13px; }
     .nav button:hover { background:#181c21; }
     .nav button.active { background:#1c2127; box-shadow:inset 2px 0 var(--cyan); color:#fff; }
     .topbar { height:68px; padding:0 26px; background:#0d0f12f2; backdrop-filter:blur(10px); }
     .page-title { font-size:18px; font-weight:650; }
-    .page-subtitle { font-size:11px; }
+    .page-subtitle { font-size:12px; }
     .content { padding:22px 26px 48px; max-width:1720px; }
     .card,.panel { border-radius:7px; box-shadow:none; }
     .panel { padding:16px; }
@@ -132,9 +132,9 @@
     .banner-icon { width:30px; height:30px; border-radius:4px; background:#292617; }
     .banner-copy strong { font-size:12px; margin-bottom:2px; }
     .banner-copy span { color:#aaa58e; font-size:10px; }
-    .eyebrow { display:block; color:#6f7781!important; font:600 9px/1.2 ui-monospace,SFMono-Regular,Consolas,monospace; letter-spacing:1.2px; margin-bottom:5px; }
+    .eyebrow { display:block; color:#7e8690!important; font:600 10px/1.2 ui-monospace,SFMono-Regular,Consolas,monospace; letter-spacing:1.1px; margin-bottom:5px; }
     .panel-title { align-items:flex-start; margin-bottom:12px; }
-    .panel-title h3 { font-size:13px; font-weight:650; }
+    .panel-title h3 { font-size:14px; font-weight:650; }
     .signal-strip { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); border:1px solid var(--line); background:var(--surface); margin-bottom:12px; }
     .signal-cell { min-height:84px; padding:14px 16px; display:grid; grid-template-columns:1fr auto; gap:3px 12px; border-right:1px solid var(--line); position:relative; }
     .signal-cell:last-child { border-right:0; }
@@ -142,31 +142,36 @@
     .signal-cell.critical::before { background:var(--red); }
     .signal-cell.review::before { background:var(--amber); }
     .signal-cell.health::before { background:var(--green); }
-    .signal-cell span { color:var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:.7px; }
+    .signal-cell span { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.7px; }
     .signal-cell strong { grid-row:1/3; grid-column:2; align-self:center; font-size:25px; font-weight:650; font-variant-numeric:tabular-nums; }
     .signal-cell.health strong { font-size:17px; }
-    .signal-cell small { color:#686f78; font-size:10px; }
+    .signal-cell small { color:#7a828b; font-size:11px; }
     .operations-grid { display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:12px; margin-bottom:12px; }
     .topology-panel { grid-column:span 8; min-height:390px; }
     .geo-card { grid-column:span 4; min-height:390px; }
     .trend-panel { grid-column:span 8; }
     .severity-panel { grid-column:span 4; }
-    .graph-legend { display:flex; gap:13px; flex-wrap:wrap; color:var(--muted); font-size:9px; }
+    .graph-legend { display:flex; gap:13px; flex-wrap:wrap; color:var(--muted); font-size:11px; }
     .graph-legend span { display:flex; align-items:center; gap:5px; }
     .entity-dot { width:7px; height:7px; border-radius:50%; display:inline-block; background:#6f7781; }
     .entity-dot.external { background:var(--red); }.entity-dot.endpoint { background:var(--cyan); }.entity-dot.process { background:var(--blue); }.entity-dot.file { background:var(--amber); }
-    .topology-canvas,.attack-graph { min-height:315px; border:1px solid var(--line-soft); background-color:#101317; background-image:linear-gradient(#1b2026 1px,transparent 1px),linear-gradient(90deg,#1b2026 1px,transparent 1px); background-size:32px 32px; overflow:hidden; position:relative; }
+    .topology-canvas,.attack-graph { min-height:315px; border:1px solid var(--line-soft); background-color:#101317; background-image:linear-gradient(#1b2026 1px,transparent 1px),linear-gradient(90deg,#1b2026 1px,transparent 1px); background-size:32px 32px; overflow:hidden; position:relative; touch-action:none; cursor:grab; }
+    .topology-canvas.is-panning,.attack-graph.is-panning { cursor:grabbing; }
     .topology-canvas svg,.attack-graph svg,.geo-map svg { width:100%; height:100%; display:block; }
     .topology-empty { height:315px; display:grid; place-items:center; color:var(--muted); font-size:11px; text-align:center; line-height:1.7; }
     .graph-edge { stroke:#45505c; stroke-width:1.2; fill:none; }
     .graph-edge.alert { stroke:#bd555d; stroke-width:1.7; }
-    .graph-edge-label { fill:#8d959e; font-size:9.5px; font-family:ui-monospace,Consolas,monospace; }
+    /* SVG는 900px viewBox가 실제 패널 너비에 맞춰 축소되므로 일반 DOM보다
+       큰 글꼴을 사용해야 화면에서 11px 안팎의 가독성을 유지할 수 있다. */
+    .graph-edge-label { fill:#8d959e; font-size:12px; font-family:ui-monospace,Consolas,monospace; }
     .graph-node { cursor:pointer; }
+    .graph-node.dragging { cursor:grabbing; }
+    .graph-node.dimmed { opacity:.18; }
     .graph-node rect { fill:#181c21; stroke:#3a424c; stroke-width:1; rx:4; }
     .graph-node:hover rect,.graph-node.active rect { stroke:#d6dce2; fill:#20252b; }
-    .graph-node .node-type { fill:#838b94; font-size:9px; letter-spacing:.8px; }
-    .graph-node .node-title { fill:#f2f4f6; font-size:12px; font-weight:600; }
-    .graph-node .node-detail { fill:#9aa2ab; font-size:9.5px; }
+    .graph-node .node-type { fill:#838b94; font-size:11.5px; letter-spacing:.7px; }
+    .graph-node .node-title { fill:#f2f4f6; font-size:15px; font-weight:600; }
+    .graph-node .node-detail { fill:#9aa2ab; font-size:12.5px; }
     .graph-node circle { stroke:#101317; stroke-width:3; }
     .geo-map { height:210px; border:1px solid var(--line-soft); background:#101317; overflow:hidden; }
     .geo-map.compact { height:145px; }
@@ -175,22 +180,22 @@
     .map-arc { fill:none; stroke:#95515a; stroke-width:1.3; stroke-dasharray:3 3; }
     .map-point { fill:var(--red); stroke:#31191d; stroke-width:3; }
     .map-home { fill:var(--cyan); stroke:#153432; stroke-width:3; }
-    .map-label { fill:#b5bbc2; font-size:9px; }
+    .map-label { fill:#b5bbc2; font-size:12.5px; }
     .origin-list { display:grid; margin-top:10px; }
-    .origin-row { display:grid; grid-template-columns:8px minmax(0,1fr) auto; gap:8px; align-items:center; padding:8px 0; border-top:1px solid var(--line-soft); font-size:10px; }
+    .origin-row { display:grid; grid-template-columns:8px minmax(0,1fr) auto; gap:8px; align-items:center; padding:8px 0; border-top:1px solid var(--line-soft); font-size:11px; }
     .origin-row:first-child { border-top:0; }
     .origin-row i { width:5px; height:5px; border-radius:50%; background:var(--red); }
-    .origin-row div { min-width:0; }.origin-row strong { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:10px; }.origin-row span { color:var(--muted); font-size:9px; }
-    .origin-row code { color:#c6ccd2; font-size:9px; }
+    .origin-row div { min-width:0; }.origin-row strong { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; }.origin-row span { color:var(--muted); font-size:10px; }
+    .origin-row code { color:#c6ccd2; font-size:10px; }
     .trend { height:155px; background:none; }
     .trend-bar { border-radius:1px; background:var(--cyan); box-shadow:none; opacity:.8; }
     .donut::after { background:var(--surface); }
     .severity-wrap { min-height:155px; }
     .table-panel { border-radius:7px; }
-    th { background:#111418; color:#747c85; font-size:9px; text-transform:uppercase; letter-spacing:.5px; }
-    td { padding:12px 16px; font-size:11px; }
+    th { background:#111418; color:#858d96; font-size:10px; text-transform:uppercase; letter-spacing:.5px; }
+    td { padding:12px 16px; font-size:12px; }
     tbody tr:hover { background:#191e23; }
-    .badge { border-radius:3px; padding:3px 6px; font-size:9px; }
+    .badge { border-radius:3px; padding:3px 6px; font-size:10px; }
     .badge.suspicious { background:#30191d; }.badge.needs_review { background:#302817; }.badge.benign { background:#142b21; }
     .incident-hero { border-radius:7px; background:#14171b; padding:17px; }
     .incident-hero h2 { font-size:18px; font-weight:650; }
@@ -198,27 +203,44 @@
     .investigation-shell { grid-template-columns:minmax(0,1fr) 300px; }
     .investigation-main { min-height:600px; }
     .tabs { gap:15px; padding:0 17px; }
-    .tabs button { padding:13px 0 11px; font-size:10px; text-transform:uppercase; letter-spacing:.5px; }
+    .tabs button { padding:13px 0 11px; font-size:11px; text-transform:uppercase; letter-spacing:.4px; }
     .tabs button.active { border-color:var(--cyan); }
     .tab-content { min-height:535px; padding:17px; }
     .attack-graph { height:485px; }
     .graph-toolbar { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:10px; }
-    .graph-toolbar p { margin:0; color:var(--muted); font-size:10px; }
+    .graph-toolbar p { margin:0; color:var(--muted); font-size:11px; }
     .graph-chip-row { display:flex; gap:5px; flex-wrap:wrap; }
-    .graph-chip { border:1px solid var(--line); color:#aab1b9; background:#171a1f; border-radius:3px; padding:4px 7px; font-size:9px; }
+    .graph-chip { border:1px solid var(--line); color:#aab1b9; background:#171a1f; border-radius:3px; padding:4px 7px; font-size:10px; }
     .entity-details { display:grid; gap:10px; }
-    .entity-details .entity-kind { color:var(--cyan); font:600 9px ui-monospace,Consolas,monospace; letter-spacing:1px; }
-    .entity-details h4 { margin:0; font-size:13px; word-break:break-word; }
+    .entity-details .entity-kind { color:var(--cyan); font:600 10px ui-monospace,Consolas,monospace; letter-spacing:1px; }
+    .entity-details h4 { margin:0; font-size:14px; word-break:break-word; }
     .entity-field { border-top:1px solid var(--line-soft); padding-top:8px; }
-    .entity-field span { color:#707780; display:block; font-size:9px; margin-bottom:3px; }
-    .entity-field strong { display:block; color:#cbd0d5; font:9px/1.55 ui-monospace,Consolas,monospace; overflow-wrap:anywhere; }
+    .entity-field span { color:#818993; display:block; font-size:10px; margin-bottom:3px; }
+    .entity-field strong { display:block; color:#cbd0d5; font:11px/1.55 ui-monospace,Consolas,monospace; overflow-wrap:anywhere; }
+    .canvas-controls { position:absolute; right:10px; bottom:10px; z-index:3; display:flex; align-items:center; background:#13171bd9; border:1px solid var(--line); padding:3px; gap:2px; }
+    .canvas-controls button { width:30px; height:28px; padding:0; border:0; background:transparent; color:#c3c9cf; cursor:pointer; font-size:14px; }
+    .canvas-controls button:hover { background:#242a31; }
+    .canvas-controls output { min-width:42px; text-align:center; color:#aab1b8; font:10px ui-monospace,Consolas,monospace; }
+    .graph-workbench { display:grid; grid-template-columns:205px minmax(0,1fr); gap:10px; }
+    .activity-panel { border:1px solid var(--line-soft); background:#111418; min-height:485px; padding:12px; }
+    .activity-panel h4 { margin:0 0 4px; font-size:14px; }.activity-panel>p { margin:0 0 10px; color:var(--muted); font-size:11px; line-height:1.5; }
+    .activity-list { display:grid; gap:5px; }
+    .activity-item { border:1px solid transparent; border-left:2px solid #49525c; background:#161a1f; color:#b6bdc5; padding:8px; text-align:left; cursor:pointer; }
+    .activity-item:hover,.activity-item.active { border-color:#38414a; border-left-color:var(--cyan); background:#1c2228; }
+    .activity-item span { display:block; color:#7f8790; font-size:11px; margin-bottom:4px; }.activity-item strong { display:block; font-size:12px; line-height:1.45; }
+    .graph-column { min-width:0; }.graph-search { width:210px; border:1px solid var(--line); background:#111418; color:var(--text); padding:7px 9px; font-size:11px; }
+    .mitre-strip { display:flex; gap:5px; flex-wrap:wrap; margin-top:10px; }
+    .mitre-tag { border:1px solid #3a4149; background:#191d22; color:#b9c0c7; padding:4px 6px; font:10px ui-monospace,Consolas,monospace; }
+    .mitre-tag strong { color:var(--amber); font-weight:600; margin-right:5px; }
+    .health-row,.setting-row { font-size:12px; }.setting-card>p { font-size:12px; }
     .detail-item,.evidence-card,.timeline-item,.action-item { border-radius:4px; background:#111418; }
     .search,select,.token-box input,.modal input { border-radius:4px; background:#111418; }
     .modal { border-radius:7px; }
     .toast { border-radius:5px; }
     @media (max-width:1180px) { .topology-panel,.trend-panel{grid-column:span 7}.geo-card,.severity-panel{grid-column:span 5}.investigation-shell{grid-template-columns:1fr}.side-stack{grid-template-columns:repeat(2,minmax(0,1fr))} }
+    @media (max-width:980px) { .graph-workbench{grid-template-columns:1fr}.activity-panel{min-height:auto}.activity-list{grid-template-columns:repeat(3,minmax(0,1fr))} }
     @media (max-width:900px) { .shell{grid-template-columns:68px 1fr}.signal-strip{grid-template-columns:repeat(2,1fr)}.signal-cell:nth-child(2){border-right:0}.signal-cell:nth-child(-n+2){border-bottom:1px solid var(--line)}.topology-panel,.geo-card,.trend-panel,.severity-panel{grid-column:1/-1}.topology-panel{min-height:350px}.side-stack{grid-template-columns:1fr 1fr} }
-    @media (max-width:640px) { .content{padding:15px 12px 40px}.topbar{padding:0 13px}.page-subtitle{display:none}.signal-strip{grid-template-columns:1fr}.signal-cell{border-right:0;border-bottom:1px solid var(--line)}.signal-cell:last-child{border-bottom:0}.graph-legend{display:none}.topology-panel,.geo-card{min-height:auto}.topology-canvas,.topology-empty{min-height:270px}.topology-canvas,.attack-graph{overflow:auto}.topology-canvas svg,.attack-graph svg{min-width:760px}.operations-grid{gap:9px}.side-stack{grid-template-columns:1fr}.attack-graph{height:400px}.graph-toolbar{align-items:flex-start;flex-direction:column}.tabs{gap:12px;overflow:auto}.tabs button{white-space:nowrap}.geo-map{height:180px} }
+    @media (max-width:640px) { .content{padding:15px 12px 40px}.topbar{padding:0 13px}.page-subtitle{display:none}.signal-strip{grid-template-columns:1fr}.signal-cell{border-right:0;border-bottom:1px solid var(--line)}.signal-cell:last-child{border-bottom:0}.graph-legend{display:none}.topology-panel,.geo-card{min-height:auto}.topology-canvas,.topology-empty{min-height:270px}.topology-canvas,.attack-graph{overflow:hidden}.operations-grid{gap:9px}.side-stack{grid-template-columns:1fr}.attack-graph{height:400px}.graph-toolbar{align-items:flex-start;flex-direction:column}.graph-search{width:100%}.activity-list{grid-template-columns:1fr}.tabs{gap:12px;overflow:auto}.tabs button{white-space:nowrap}.geo-map{height:180px} }
   </style>
 </head>
 <body>
@@ -265,7 +287,7 @@
       <section class="page" id="page-investigation">
         <div id="investigation-empty" class="panel empty"><div class="empty-icon">⌕</div><strong>조사할 사건을 선택하세요.</strong><p>사건 큐에서 항목을 선택하면 판단 근거, 원본 이벤트, 공격 흐름과 권장 대응을 한 화면에서 확인할 수 있습니다.</p><button class="secondary" data-go="incidents">사건 큐 열기</button></div>
         <div id="investigation-content" hidden>
-          <div class="card incident-hero"><div><span class="badge" id="investigation-badge"></span><h2 id="investigation-title"></h2><div class="incident-id" id="investigation-id"></div></div><div class="hero-score"><span class="muted">RISK SCORE</span><strong id="investigation-score">0</strong><span class="muted">/ 100</span></div></div>
+          <div class="card incident-hero"><div><span class="badge" id="investigation-badge"></span><h2 id="investigation-title"></h2><div class="incident-id" id="investigation-id"></div><div class="mitre-strip" id="mitre-strip"></div></div><div class="hero-score"><span class="muted">RISK SCORE</span><strong id="investigation-score">0</strong><span class="muted">/ 100</span></div></div>
           <div class="investigation-shell"><div class="panel investigation-main" style="padding:0"><div class="tabs" id="investigation-tabs"><button class="active" data-tab="graph">공격 관계도</button><button data-tab="summary">요약</button><button data-tab="evidence">증거</button><button data-tab="attack">타임라인</button><button data-tab="response">대응</button></div><div class="tab-content" id="investigation-body"></div></div><aside class="side-stack"><div class="panel entity-inspector"><div class="panel-title"><div><span class="eyebrow">ENTITY</span><h3>선택 항목</h3></div></div><div id="entity-inspector"><p class="muted">관계도의 노드를 선택하면 세부 정보가 표시됩니다.</p></div></div><div class="panel"><div class="panel-title"><div><span class="eyebrow">GEO CONTEXT</span><h3>IP 위치</h3></div></div><div class="geo-map compact" id="investigation-geo"></div><div class="origin-list" id="investigation-origin"></div></div><div class="panel"><div class="panel-title"><h3>검증 상태</h3></div><div class="health-list" id="validation-list"></div></div><div class="panel"><div class="panel-title"><h3>데이터 출처</h3></div><div class="health-list" id="source-list"></div></div></aside></div>
         </div>
       </section>
@@ -288,7 +310,7 @@
 
 <script>
   const fragmentToken = new URLSearchParams(location.hash.slice(1)).get('token') || '';
-  const state = { token: '', incidents: [], settings: null, status: null, selected: null, tab: 'graph', streaming: false, streamController: null, statusTimer: null };
+  const state = { token: '', incidents: [], settings: null, status: null, selected: null, tab: 'graph', streaming: false, streamController: null, statusTimer: null, graphViews: new Map(), overviewRenderKey: '' };
   const pageInfo = { overview:['보안 개요','현재 PC의 탐지 상태와 주요 사건을 확인합니다.'], incidents:['사건','탐지된 사건을 필터링하고 우선순위에 따라 조사합니다.'], investigation:['조사','연결된 증거와 공격 흐름을 따라 사건을 분석합니다.'], settings:['설정','수집기, 탐지 정책, 모델과 연결 상태를 관리합니다.'] };
   const verdictLabel = { suspicious:'고위험', needs_review:'검토 필요', benign:'정상' };
   const eventLabel = { process_start:'프로세스 시작', file_create:'파일 생성', network_connect:'네트워크 연결' };
@@ -330,7 +352,15 @@
     // 제목과 탭이 잘린 화면부터 보여 사용자가 레이아웃 오류로 오해할 수 있다.
     window.scrollTo(0,0);
   }
-  function renderAll() { renderStatus(); renderMetrics(); renderTrend(); renderTables(); renderOverviewIntel(); renderSettings(); if(state.selected) renderInvestigation(); }
+  function renderAll() { renderStatus(); renderSettings(); renderIncidentViews({force:true}); }
+  function renderIncidentViews({updatedIncidentId=null,force=false}={}) {
+    // 실시간 사건이 추가되어도 설정·상단 연결 상태·현재 페이지 전체를 다시
+    // 그리지 않는다. 데이터가 변한 지표, 추이, 표와 관련 그래프만 갱신한다.
+    renderMetrics();renderTrend();renderTables();
+    const overviewItem=state.incidents[0]||null,overviewKey=overviewItem?`${overviewItem.incident_id}:${overviewItem.source_events?.length||0}:${latestTimestamp(overviewItem)||''}`:'empty';
+    if(force||overviewKey!==state.overviewRenderKey){state.overviewRenderKey=overviewKey;renderOverviewIntel();}
+    if(state.selected){const latestSelected=state.incidents.find(item=>item.incident_id===state.selected.incident_id);if(latestSelected)state.selected=latestSelected;if(force||updatedIncidentId===state.selected.incident_id)renderInvestigation();}
+  }
   function renderStatus() {
     const collector=state.status?.collector||{}; const running=collector.state==='running',starting=collector.state==='starting',failed=collector.state==='error',permissionError=(collector.label||'').includes('권한 부족'); const banner=document.querySelector('#collector-banner');
     banner.querySelector('strong').textContent=collector.label||(running?'실시간 Sysmon 수집 중':'수집 상태 확인 중');
@@ -375,15 +405,37 @@
   }
 
   function renderAttackGraph(container,item,{interactive=false,overview=false}={}){
-    container.replaceChildren();if(!item){container.append(node('div','topology-empty','분석할 사건이 없습니다.\n실시간 수집 또는 안전한 데모 사건을 시작하세요.'));return;}
-    const {entities,edges}=buildGraphEntities(item),svg=svgElement('svg',{viewBox:'0 0 900 380',role:'img','aria-label':'사건 엔티티 관계도'}),groups=new Map();
+    container.replaceChildren();if(!item){container.append(node('div','topology-empty','분석할 사건이 없습니다.\n실시간 수집 또는 안전한 데모 사건을 시작하세요.'));return null;}
+    const {entities,edges}=buildGraphEntities(item),svg=svgElement('svg',{viewBox:'0 0 900 380',role:'img','aria-label':'드래그와 확대가 가능한 사건 엔티티 관계도'}),viewport=svgElement('g',{class:'graph-viewport'}),groups=new Map(),viewKey=`${overview?'overview':'investigation'}:${item.incident_id}`;
     entities.forEach(entity=>{if(!groups.has(entity.depth))groups.set(entity.depth,[]);groups.get(entity.depth).push(entity);});
     groups.forEach((items,depth)=>items.forEach((entity,index)=>{entity.x=28+depth*175;entity.y=(index+1)*(360/(items.length+1))-30;}));
-    const defs=svgElement('defs'),marker=svgElement('marker',{id:`arrow-${overview?'overview':'detail'}`,viewBox:'0 0 10 10',refX:9,refY:5,markerWidth:5,markerHeight:5,orient:'auto-start-reverse'});marker.append(svgElement('path',{d:'M 0 0 L 10 5 L 0 10 z',fill:'#59636e'}));defs.append(marker);svg.append(defs);
-    edges.forEach(edge=>{const startX=edge.from.x+142,startY=edge.from.y+29,endX=edge.to.x,endY=edge.to.y+29,midX=(startX+endX)/2;const path=svgElement('path',{d:`M ${startX} ${startY} C ${midX} ${startY}, ${midX} ${endY}, ${endX} ${endY}`,class:`graph-edge${edge.alert?' alert':''}`,'marker-end':`url(#arrow-${overview?'overview':'detail'})`});svg.append(path,svgText(edge.label,midX-16,(startY+endY)/2-5,'graph-edge-label'));});
+    const initialPositions=new Map(entities.map(entity=>[entity.key,{x:entity.x,y:entity.y}])),savedView=state.graphViews.get(viewKey);
+    if(savedView){entities.forEach(entity=>{const saved=savedView.positions?.[entity.key];if(saved){entity.x=saved.x;entity.y=saved.y;}});}
+    const transform={x:savedView?.x||0,y:savedView?.y||0,scale:savedView?.scale||1};
+    const saveView=()=>state.graphViews.set(viewKey,{x:transform.x,y:transform.y,scale:transform.scale,positions:Object.fromEntries(entities.map(entity=>[entity.key,{x:entity.x,y:entity.y}]))});
+    const applyTransform=()=>{viewport.setAttribute('transform',`translate(${transform.x} ${transform.y}) scale(${transform.scale})`);zoomOutput.value=`${Math.round(transform.scale*100)}%`;saveView();};
+    const updateEdges=()=>edges.forEach(edge=>{const startX=edge.from.x+142,startY=edge.from.y+29,endX=edge.to.x,endY=edge.to.y+29,midX=(startX+endX)/2;edge.path.setAttribute('d',`M ${startX} ${startY} C ${midX} ${startY}, ${midX} ${endY}, ${endX} ${endY}`);edge.labelNode.setAttribute('x',midX-16);edge.labelNode.setAttribute('y',(startY+endY)/2-5);});
+    const defs=svgElement('defs'),marker=svgElement('marker',{id:`arrow-${overview?'overview':'detail'}`,viewBox:'0 0 10 10',refX:9,refY:5,markerWidth:5,markerHeight:5,orient:'auto-start-reverse'});marker.append(svgElement('path',{d:'M 0 0 L 10 5 L 0 10 z',fill:'#59636e'}));defs.append(marker);svg.append(defs,viewport);
+    edges.forEach(edge=>{edge.path=svgElement('path',{class:`graph-edge${edge.alert?' alert':''}`,'marker-end':`url(#arrow-${overview?'overview':'detail'})`});edge.labelNode=svgText(edge.label,0,0,'graph-edge-label');viewport.append(edge.path,edge.labelNode);});
     const colors={external:'#ff6b6b',endpoint:'#64d8cb',process:'#7aa2f7',file:'#e9b949'};
-    entities.forEach(entity=>{const group=svgElement('g',{class:'graph-node',transform:`translate(${entity.x} ${entity.y})`,tabindex:'0',role:'button','aria-label':`${entity.type} ${entity.title}`});group.append(svgElement('rect',{width:142,height:58}),svgElement('circle',{cx:13,cy:14,r:5,fill:colors[entity.type]||'#8f98a2'}),svgText(entity.type.toUpperCase(),24,17,'node-type'),svgText(compactLabel(entity.title,20),12,36,'node-title'),svgText(compactLabel(entity.detail,25),12,50,'node-detail'));const activate=()=>{svg.querySelectorAll('.graph-node').forEach(item=>item.classList.remove('active'));group.classList.add('active');interactive?renderEntityInspector(entity):selectIncident(item);};group.addEventListener('click',activate);group.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();activate();}});svg.append(group);});
-    container.append(svg);if(interactive&&entities.length)renderEntityInspector(entities.find(entity=>entity.type==='external')||entities[0]);
+    let pointerMode=null,pointerId=null,lastPoint=null,dragOffset=null,moved=false;
+    const viewPoint=event=>{const rect=svg.getBoundingClientRect();return{x:(event.clientX-rect.left)*900/rect.width,y:(event.clientY-rect.top)*380/rect.height};};
+    const activate=entity=>{entities.forEach(entry=>entry.element.classList.toggle('active',entry===entity));interactive?renderEntityInspector(entity):selectIncident(item);};
+    entities.forEach(entity=>{const group=svgElement('g',{class:'graph-node',transform:`translate(${entity.x} ${entity.y})`,tabindex:'0',role:'button','aria-label':`${entity.type} ${entity.title}`});entity.element=group;group.append(svgElement('rect',{width:142,height:58}),svgElement('circle',{cx:13,cy:14,r:5,fill:colors[entity.type]||'#8f98a2'}),svgText(entity.type.toUpperCase(),24,17,'node-type'),svgText(compactLabel(entity.title,20),12,36,'node-title'),svgText(compactLabel(entity.detail,25),12,50,'node-detail'));group.addEventListener('click',()=>{if(!moved)activate(entity);moved=false;});group.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();activate(entity);}});viewport.append(group);});
+    const controls=node('div','canvas-controls'),zoomOut=node('button','','−'),zoomOutput=document.createElement('output'),zoomIn=node('button','','+'),reset=node('button','','↺');zoomOut.title='축소';zoomIn.title='확대';reset.title='위치와 배율 초기화';controls.append(zoomOut,zoomOutput,zoomIn,reset);
+    const zoomAt=(factor,focus={x:450,y:190})=>{const next=Math.min(2.4,Math.max(.45,transform.scale*factor)),ratio=next/transform.scale;transform.x=focus.x-(focus.x-transform.x)*ratio;transform.y=focus.y-(focus.y-transform.y)*ratio;transform.scale=next;applyTransform();};
+    const resetView=()=>{transform.x=0;transform.y=0;transform.scale=1;entities.forEach(entity=>{const initial=initialPositions.get(entity.key);entity.x=initial.x;entity.y=initial.y;entity.element.setAttribute('transform',`translate(${entity.x} ${entity.y})`);});updateEdges();applyTransform();};
+    zoomOut.onclick=()=>zoomAt(.82);zoomIn.onclick=()=>zoomAt(1.22);reset.onclick=resetView;
+    svg.addEventListener('wheel',event=>{event.preventDefault();zoomAt(event.deltaY<0?1.12:.89,viewPoint(event));},{passive:false});
+    svg.addEventListener('pointerdown',event=>{const targetNode=event.target.closest('.graph-node');pointerId=event.pointerId;lastPoint=viewPoint(event);moved=false;svg.setPointerCapture(pointerId);if(targetNode){const entity=entities.find(entry=>entry.element===targetNode);pointerMode=entity;const world={x:(lastPoint.x-transform.x)/transform.scale,y:(lastPoint.y-transform.y)/transform.scale};dragOffset={x:world.x-entity.x,y:world.y-entity.y};targetNode.classList.add('dragging');}else{pointerMode='pan';container.classList.add('is-panning');}});
+    svg.addEventListener('pointermove',event=>{if(pointerId!==event.pointerId||!pointerMode)return;const point=viewPoint(event);if(Math.abs(point.x-lastPoint.x)+Math.abs(point.y-lastPoint.y)>1)moved=true;if(pointerMode==='pan'){transform.x+=point.x-lastPoint.x;transform.y+=point.y-lastPoint.y;applyTransform();}else{const world={x:(point.x-transform.x)/transform.scale,y:(point.y-transform.y)/transform.scale};pointerMode.x=world.x-dragOffset.x;pointerMode.y=world.y-dragOffset.y;pointerMode.element.setAttribute('transform',`translate(${pointerMode.x} ${pointerMode.y})`);updateEdges();saveView();}lastPoint=point;});
+    const finishPointer=event=>{if(pointerId!==event.pointerId)return;if(pointerMode!=='pan')pointerMode?.element?.classList.remove('dragging');container.classList.remove('is-panning');pointerMode=null;pointerId=null;};svg.addEventListener('pointerup',finishPointer);svg.addEventListener('pointercancel',finishPointer);
+    const controller={
+      search(query){const term=query.trim().toLowerCase();let first=null;entities.forEach(entity=>{const match=!term||`${entity.title} ${entity.detail} ${JSON.stringify(entity.fields)}`.toLowerCase().includes(term);entity.element.classList.toggle('dimmed',!match);if(term&&match&&!first)first=entity;});if(first)activate(first);},
+      focusForEvent(event){const candidates=[event.process_guid&&`process:${event.process_guid}`,event.file_path&&`file:${event.file_path}`,event.destination_ip&&`ip:${event.destination_ip}`,event.source_ip&&`ip:${event.source_ip}`].filter(Boolean);const entity=entities.find(entry=>candidates.includes(entry.key));if(entity){activate(entity);transform.x=450-(entity.x+71)*transform.scale;transform.y=190-(entity.y+29)*transform.scale;applyTransform();}},
+      reset:resetView
+    };
+    container.append(svg,controls);updateEdges();applyTransform();if(interactive&&entities.length)activate(entities.find(entity=>entity.type==='external')||entities[0]);return controller;
   }
 
   function renderEntityInspector(entity){const inspector=document.querySelector('#entity-inspector');if(!inspector||!entity)return;const details=node('div','entity-details');details.append(node('span','entity-kind',entity.type.toUpperCase()),node('h4','',entity.title));Object.entries(entity.fields||{}).forEach(([label,value])=>{const field=node('div','entity-field');field.append(node('span','',label),node('strong','',value));details.append(field);});inspector.replaceChildren(details);}
@@ -425,11 +477,16 @@
   }
   function settingRow(label,value){const row=node('div','setting-row');row.append(node('span','',label),node('strong','',value));return row;}
   function selectIncident(item){state.selected=item;state.tab='graph';navigate('investigation');renderInvestigation();}
-  function renderInvestigation(){const item=state.selected;if(!item)return;document.querySelector('#investigation-empty').hidden=true;document.querySelector('#investigation-content').hidden=false;const badge=document.querySelector('#investigation-badge');badge.className=`badge ${item.verdict}`;badge.textContent=verdictLabel[item.verdict];document.querySelector('#investigation-title').textContent=incidentTitle(item);document.querySelector('#investigation-id').textContent=item.incident_id;document.querySelector('#investigation-score').textContent=item.risk_score;document.querySelectorAll('[data-tab]').forEach(x=>x.classList.toggle('active',x.dataset.tab===state.tab));renderInvestigationTab(item);renderInvestigationSide(item);}
+  const mitreByRule={'PROC-001':['Execution','T1204'], 'PROC-002':['Execution','T1059.001'], 'FILE-001':['Persistence','T1105'], 'NET-001':['Command & Control','T1071'], 'CORR-001':['Multi-stage','XDR']};
+  function mitreForItem(item){const seen=new Set();return (item.findings||[]).map(finding=>mitreByRule[finding.rule_id]).filter(Boolean).filter(entry=>{const key=entry.join(':');if(seen.has(key))return false;seen.add(key);return true;});}
+  function renderMitreStrip(item){const strip=document.querySelector('#mitre-strip');strip.replaceChildren();mitreForItem(item).forEach(([tactic,technique])=>{const tag=node('span','mitre-tag');tag.append(node('strong','',technique),document.createTextNode(tactic));strip.append(tag);});}
+  function renderInvestigation(){const item=state.selected;if(!item)return;document.querySelector('#investigation-empty').hidden=true;document.querySelector('#investigation-content').hidden=false;const badge=document.querySelector('#investigation-badge');badge.className=`badge ${item.verdict}`;badge.textContent=verdictLabel[item.verdict];document.querySelector('#investigation-title').textContent=incidentTitle(item);document.querySelector('#investigation-id').textContent=item.incident_id;document.querySelector('#investigation-score').textContent=item.risk_score;document.querySelectorAll('[data-tab]').forEach(x=>x.classList.toggle('active',x.dataset.tab===state.tab));renderMitreStrip(item);renderInvestigationTab(item);renderInvestigationSide(item);}
   function renderInvestigationTab(item){
     const body=document.querySelector('#investigation-body');body.replaceChildren();
     if(state.tab==='graph'){
-      const toolbar=node('div','graph-toolbar'),copy=node('p','','노드를 선택하면 오른쪽에서 경로·주소·프로세스 정보를 확인할 수 있습니다.'),chips=node('div','graph-chip-row');['IP','호스트','프로세스','파일'].forEach(label=>chips.append(node('span','graph-chip',label)));toolbar.append(copy,chips);const graph=node('div','attack-graph');body.append(toolbar,graph);renderAttackGraph(graph,item,{interactive:true});
+      const toolbar=node('div','graph-toolbar'),copy=node('p','','빈 공간 드래그: 이동 · 휠: 확대/축소 · 노드 드래그: 위치 변경'),search=node('input','graph-search');search.placeholder='프로세스, IP, 파일 검색';toolbar.append(copy,search);
+      const workbench=node('div','graph-workbench'),activity=node('aside','activity-panel'),activityTitle=node('h4','','사건 활동'),activityCopy=node('p','',`${item.source_events.length}개 이벤트 · 클릭하면 관계도에서 위치를 찾습니다.`),activityList=node('div','activity-list'),graphColumn=node('div','graph-column'),graph=node('div','attack-graph');activity.append(activityTitle,activityCopy,activityList);graphColumn.append(graph);workbench.append(activity,graphColumn);body.append(toolbar,workbench);
+      const controller=renderAttackGraph(graph,item,{interactive:true});search.oninput=()=>controller?.search(search.value);[...(item.source_events||[])].sort((a,b)=>a.timestamp.localeCompare(b.timestamp)).forEach(event=>{const button=node('button','activity-item');button.append(node('span','',`${formatTime(event.timestamp)} · ${eventLabel[event.event_type]||event.event_type}`),node('strong','',compactLabel(eventSummary(event),38)));button.onclick=()=>{activityList.querySelectorAll('button').forEach(entry=>entry.classList.remove('active'));button.classList.add('active');controller?.focusForEvent(event);};activityList.append(button);});
     }else if(state.tab==='summary'){
       const grid=node('div','detail-grid');[['판정',verdictLabel[item.verdict]],['위험 점수',`${item.risk_score} / 100`],['탐지 규칙',`${item.findings.length}개`],['원본 이벤트',`${item.source_events.length}개`],['공격 흐름',`${item.attack_chains.length}개`],['최종 시각',formatTime(latestTimestamp(item))]].forEach(([a,b])=>{const box=node('div','detail-item');box.append(node('span','',a),node('strong','',b));grid.append(box);});body.append(grid);
     }else if(state.tab==='evidence'){
@@ -442,9 +499,9 @@
   }
   function renderInvestigationSide(item){const validation=document.querySelector('#validation-list');validation.replaceChildren(healthRow('검증 결과',item.validation.passed?'통과':'확인 필요',item.validation.passed?'green':'amber'),healthRow('재검토 횟수',item.validation.review_count,'blue'),healthRow('검증 오류',item.validation.errors.length,'red'));const sources=[...new Set(item.source_events.map(x=>x.source))];const source=document.querySelector('#source-list');source.replaceChildren(...sources.map(value=>healthRow(value,'연결됨','green')),healthRow('이벤트',item.source_events.length,'blue'));renderGeoMap(document.querySelector('#investigation-geo'),document.querySelector('#investigation-origin'),item);}
   function healthRow(label,value,color){const row=node('div','health-row');const dot=node('i','legend-dot');dot.style.background=`var(--${color})`;row.append(dot,node('span','',label),node('strong','',value));return row;}
-  async function createDemo(){try{toast('안전한 데모 사건을 분석하고 있습니다…');const report=await api('/demo/incidents',{method:'POST'});state.incidents=[report,...state.incidents];renderAll();selectIncident(report);toast('데모 사건이 생성되었습니다. 실제 악성 코드는 실행되지 않았습니다.');}catch(error){toast(error.message);}}
+  async function createDemo(){try{toast('안전한 데모 사건을 분석하고 있습니다…');const report=await api('/demo/incidents',{method:'POST'});state.incidents=[report,...state.incidents];renderIncidentViews({updatedIncidentId:report.incident_id});selectIncident(report);toast('데모 사건이 생성되었습니다. 실제 악성 코드는 실행되지 않았습니다.');}catch(error){toast(error.message);}}
   async function configureCollector(){if(!confirm('Windows 관리자 권한으로 Sysmon 수집 권한을 설정할까요? UAC 확인창이 표시됩니다.'))return;try{await api('/collector/configure',{method:'POST'});toast('Windows UAC 확인창에서 허용을 선택하세요. 설정 후 수집기가 자동으로 다시 연결됩니다.');}catch(error){toast(error.message);}}
-  async function streamEvents(){state.streaming=true;const controller=new AbortController();state.streamController=controller;try{const response=await fetch('/events',{headers:authHeaders(),signal:controller.signal});if(!response.ok||!response.body)return;const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='';while(true){const{value,done}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});const messages=buffer.split('\n\n');buffer=messages.pop();messages.forEach(message=>{const line=message.split('\n').find(x=>x.startsWith('data:'));if(!line)return;const item=JSON.parse(line.slice(5));state.incidents=[item,...state.incidents.filter(x=>x.incident_id!==item.incident_id)];renderAll();});}}catch(error){if(error.name!=='AbortError')console.warn('실시간 사건 연결이 종료되었습니다.',error);}finally{if(state.streamController===controller)state.streamController=null;state.streaming=false;}}
+  async function streamEvents(){state.streaming=true;const controller=new AbortController();state.streamController=controller;try{const response=await fetch('/events',{headers:authHeaders(),signal:controller.signal});if(!response.ok||!response.body)return;const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='';while(true){const{value,done}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});const messages=buffer.split('\n\n');buffer=messages.pop();messages.forEach(message=>{const line=message.split('\n').find(x=>x.startsWith('data:'));if(!line)return;const item=JSON.parse(line.slice(5));state.incidents=[item,...state.incidents.filter(x=>x.incident_id!==item.incident_id)];renderIncidentViews({updatedIncidentId:item.incident_id});});}}catch(error){if(error.name!=='AbortError')console.warn('실시간 사건 연결이 종료되었습니다.',error);}finally{if(state.streamController===controller)state.streamController=null;state.streaming=false;}}
   function showAuth(){document.querySelector('#auth-modal').classList.add('open');}
   async function saveToken(value){const token=value.trim();if(token.length<32){toast('API 토큰은 32자 이상이어야 합니다.');return;}try{await establishSession(token);document.querySelector('#auth-modal').classList.remove('open');document.querySelector('#modal-token').value='';document.querySelector('#settings-token').value='';await loadAll();toast('브라우저 보안 세션을 연결했습니다.');}catch(error){toast(error.message);}}
   function toast(message){const box=document.querySelector('#toast');box.textContent=message;box.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>box.classList.remove('show'),3500);}
