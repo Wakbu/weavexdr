@@ -21,11 +21,9 @@ from xdr_graph.risk_policy import load_default_risk_policy
 from xdr_graph.storage import SQLiteEventStore
 
 
-def verify_embedded_server(app) -> None:
-    """번들 안의 Uvicorn 동적 모듈과 실제 HTTP 응답까지 확인한다."""
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        port = probe.getsockname()[1]
+def build_embedded_server(app, *, port: int) -> uvicorn.Server:
+    # smoke와 실제 실행이 같은 설정을 사용해야 검증에서 통과한 경로가 운영에서
+    # 달라지는 문제를 막을 수 있다. PyInstaller에서 동적 선택도 피한다.
     config = uvicorn.Config(
         app,
         host="127.0.0.1",
@@ -36,7 +34,15 @@ def verify_embedded_server(app) -> None:
         log_config=None,
         access_log=False,
     )
-    server = uvicorn.Server(config)
+    return uvicorn.Server(config)
+
+
+def verify_embedded_server(app) -> None:
+    """번들 안의 Uvicorn 동적 모듈과 실제 HTTP 응답까지 확인한다."""
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    server = build_embedded_server(app, port=port)
     server_thread = threading.Thread(target=server.run, daemon=True)
     server_thread.start()
     deadline = time.monotonic() + 10
@@ -84,9 +90,10 @@ def main() -> None:
         logger.info("desktop runtime smoke test passed")
         return
     dashboard_url = f"http://127.0.0.1:8765/dashboard#{urlencode({'token': api_token})}"
-    threading.Timer(1.0, lambda: webbrowser.open(dashboard_url)).start()
+    if os.environ.get("WEAVEXDR_NO_BROWSER") != "1":
+        threading.Timer(1.0, lambda: webbrowser.open(dashboard_url)).start()
     logger.info("desktop runtime started")
-    uvicorn.run(app, host="127.0.0.1", port=8765, log_config=None)
+    build_embedded_server(app, port=8765).run()
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hmac
+import logging
 import os
 import sys
 from dataclasses import dataclass, field
@@ -11,6 +12,7 @@ from threading import RLock
 import uvicorn
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, TypeAdapter
 
 from xdr_graph.models import IncidentReport
@@ -87,6 +89,15 @@ def create_app(
     # 오류가 아니라 시작/릴리스 검증 단계에서 발견한다.
     dashboard_html = load_dashboard_html()
     app = FastAPI(title="WeaveXDR Local API", version="0.1.0")
+
+    @app.exception_handler(Exception)
+    async def log_unhandled_error(request: Request, error: Exception) -> JSONResponse:
+        # 창 없는 EXE에서도 원인을 확인할 수 있도록 모든 미처리 서버 예외를
+        # 회전 로그에 남긴다. 응답에는 내부 경로나 비밀 값을 노출하지 않는다.
+        logging.getLogger("weavexdr").exception(
+            "unhandled API error on %s", request.url.path, exc_info=error
+        )
+        return JSONResponse(status_code=500, content={"detail": "internal server error"})
 
     async def require_local_token(
         request: Request,

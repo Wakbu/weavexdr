@@ -17,3 +17,7 @@ python scripts/validate_release.py
 릴리스 검증기는 JSON 구문, 위험 대응의 승인 강제, 설정 내 비밀 필드, 필수 문서 존재와 UTF-8 디코딩을 검사한다.
 
 `scripts/build_local_executable.ps1`은 PyInstaller 빌드가 성공한 뒤 프로젝트 루트의 `WeaveXDR.exe`를 새 버전으로 교체한다. 번들 스모크 테스트는 Uvicorn 서버를 실제로 시작해 `/health`와 `/dashboard`가 모두 HTTP 200으로 응답하는지 확인한다. 실행 파일과 내부 작업용 Markdown은 `.gitignore`로 제외하며, 공개 릴리스에는 설치 파일 또는 ZIP 자산으로만 첨부한다.
+
+정식 릴리스 지정 전에는 스모크 모드뿐 아니라 일반 실행 모드의 EXE를 별도 프로세스로 시작해 같은 두 URL을 다시 확인한다. GitHub 릴리스 설명은 한국어·영어를 병기하고 주요 변경, 검증, 다운로드와 체크섬을 Markdown 헤더로 구분한다.
+
+PyInstaller 빌드에는 문자열로 로드되는 Uvicorn 하위 모듈과 FastAPI 동기 엔드포인트가 사용하는 `anyio._backends`를 명시적으로 포함한다. 창 없는 EXE는 직접 호출하지 않고 프로세스 종료를 기다려 스모크 테스트의 실제 exit code를 확인한다.
