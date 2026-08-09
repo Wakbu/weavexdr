@@ -94,6 +94,18 @@ Defender 검사는 Windows 권한 정책에 따라 관리자 권한이 필요할
 
 오탐 피드백은 서로 다른 사건에서 두 번 이상 검토자 승인을 받아야 허용 목록·회귀 평가 후보가 된다. 후보 반영에는 다시 명시적 확인이 필요하며 자동으로 탐지 규칙을 비활성화하지 않는다.
 
+## 대응 dry-run과 승인
+
+`config/response-policy.json`은 허용된 대응, 승인이 필요한 대응과 보호할 Windows 프로세스·경로를 정의한다. 현재 `DryRunResponseService`는 대응 가능 여부만 검사하며 운영체제 명령을 호출하지 않는다.
+
+- 명령은 사건 ID, 대상 식별 정보와 시간대가 포함된 요청 시각을 요구
+- 프로세스 종료는 PID와 프로세스 시작 시각을 함께 요구
+- 파일 격리는 전체 경로와 SHA-256을 요구
+- 검증된 사건 보고서가 권고하지 않은 대응은 차단
+- Windows 핵심 프로세스와 보호 경로 대상은 승인 전 단계에서 차단
+- 종료·격리 승인은 명령 ID에 귀속되며 기본 10분 뒤 만료
+- 현재 모든 결과는 `executed=False`이며 실제 종료·격리는 W11 전까지 불가능
+
 ## Sysmon 수집 환경
 
 Microsoft Sysmon 15.21 서비스와 드라이버를 설정 스키마 4.91로 설치했다. 프로젝트 기준 설정은 `config/sysmon-minimal.xml`, 실제 적용 사본은 `C:\ProgramData\PersonalXDR\sysmon-minimal.xml`이다.
@@ -146,7 +158,7 @@ powershell.exe -ExecutionPolicy Bypass -File .\scripts\verify_sysmon.ps1 -Output
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-테스트는 그래프 판정, 이벤트 저장, 파일 감시, 상관분석, 근거 추적과 오탐 관리 정책을 검증한다. 현재 전체 결과는 `80 passed`, 기준 평가는 `30/30 passed`다.
+테스트는 그래프 판정, 이벤트 저장, 파일 감시, 상관분석, 오탐 관리와 대응 안전 정책을 검증한다. 현재 전체 결과는 `88 passed`, 기준 평가는 `30/30 passed`다.
 
 ## 기준 평가
 
@@ -171,4 +183,4 @@ powershell.exe -ExecutionPolicy Bypass -File .\scripts\verify_sysmon.ps1 -Output
 - 실제 프로세스 종료와 파일 격리
 - 장기 보안 지식 그래프
 
-상세 설계는 [XDR AI 그래프 엔지니어링 설계 정리](XDR_AI_그래프_엔지니어링_설계_정리.md), 전체 작업 순서와 진행 상태는 [프로젝트 로드맵](PROJECT_ROADMAP.md), 외부 공격 기준과 행위 탐지 원칙은 [탐지 기준 및 위협 정보 정책](docs/DETECTION_POLICY.md)을 참고한다.
+상세 설계는 [XDR AI 그래프 엔지니어링 설계 정리](XDR_AI_그래프_엔지니어링_설계_정리.md), 전체 작업 순서와 진행 상태는 [프로젝트 로드맵](PROJECT_ROADMAP.md), 외부 공격 기준은 [탐지 기준 및 위협 정보 정책](docs/DETECTION_POLICY.md), 대응 제약은 [보안 및 대응 정책](docs/SECURITY.md)을 참고한다.

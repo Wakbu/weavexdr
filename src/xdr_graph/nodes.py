@@ -3,6 +3,7 @@ from __future__ import annotations
 from xdr_graph.correlation import EventCorrelationEngine
 from xdr_graph.detection import DetectionRuleEngine, load_default_detection_engine
 from xdr_graph.allowlist import AllowlistEngine, load_default_allowlist_engine
+from xdr_graph.response import load_default_response_policy
 from xdr_graph.models import (
     Finding,
     IncidentInput,
@@ -11,9 +12,6 @@ from xdr_graph.models import (
     ValidationResult,
 )
 from xdr_graph.model_adapter import ModelAdapter
-
-
-ALLOWED_ACTIONS = {"terminate_process", "quarantine_file", "collect_additional_evidence"}
 
 
 def normalize_event(state: IncidentState) -> dict:
@@ -89,7 +87,8 @@ def verify_incident(state: IncidentState) -> dict:
     # 실제 대응 서비스가 구현되더라도 모델이 임의 명령이나 예상하지 못한
     # 조치를 추가하지 못하도록 그래프 단계에서 먼저 허용 목록을 적용한다.
     proposed_actions = set(state.get("proposed_actions", []))
-    if proposed_actions - ALLOWED_ACTIONS:
+    allowed_actions = set(load_default_response_policy().allowed_actions)
+    if proposed_actions - allowed_actions:
         errors.append("Synthesis proposed an action outside the response allowlist")
     if state["verdict"] == "benign" and proposed_actions:
         errors.append("Benign verdict cannot propose response actions")

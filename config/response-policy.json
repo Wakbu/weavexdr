@@ -1,0 +1,30 @@
+{
+  "schema_version": "1.0",
+  "policy_version": "20260809.1",
+  "allowed_actions": [
+    "terminate_process",
+    "quarantine_file",
+    "collect_additional_evidence"
+  ],
+  "approval_required_actions": [
+    "terminate_process",
+    "quarantine_file"
+  ],
+  "approval_ttl_minutes": 10,
+  "protected_process_names": [
+    "system",
+    "registry",
+    "smss.exe",
+    "csrss.exe",
+    "wininit.exe",
+    "services.exe",
+    "lsass.exe",
+    "winlogon.exe",
+    "svchost.exe"
+  ],
+  "protected_path_prefixes": [
+    "C:\\Windows",
+    "C:\\Program Files\\WindowsApps",
+    "C:\\ProgramData\\Microsoft\\Windows Defender"
+  ]
+}
