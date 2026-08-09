@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WeaveXDR</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, "Noto Sans KR", sans-serif; background: #08111d; color: #e8f2ff; }
+    body { margin: 0; padding: 24px; } header, .cards, main { max-width: 1180px; margin: 0 auto 20px; }
+    header { display: flex; gap: 12px; align-items: center; justify-content: space-between; }
+    input, button { border: 1px solid #29435f; background: #102238; color: inherit; padding: 10px 12px; border-radius: 8px; }
+    button { cursor: pointer; background: #0b6cff; border-color: #0b6cff; }
+    .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .card, section { background: #0d1b2b; border: 1px solid #1c344d; border-radius: 12px; padding: 16px; }
+    .value { font-size: 28px; font-weight: 700; } main { display: grid; grid-template-columns: 1.2fr .8fr; gap: 16px; }
+    table { width: 100%; border-collapse: collapse; } th, td { text-align: left; padding: 10px; border-bottom: 1px solid #20354b; }
+    tr { cursor: pointer; } .suspicious { color: #ff6b7a; } .needs_review { color: #ffd166; } .benign { color: #73e2a7; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; color: #bcd2e8; }
+    @media (max-width: 800px) { main, .cards { grid-template-columns: 1fr; } header { align-items: stretch; flex-direction: column; } }
+  </style>
+</head>
+<body>
+  <header><div><h1>WeaveXDR</h1><div id="connection">인증 토큰을 입력하세요.</div></div><div><input id="token" type="password" placeholder="API token"><button id="connect">연결</button></div></header>
+  <div class="cards"><div class="card"><div>전체 사건</div><div class="value" id="total">0</div></div><div class="card"><div>의심</div><div class="value suspicious" id="suspicious">0</div></div><div class="card"><div>검토 필요</div><div class="value needs_review" id="review">0</div></div></div>
+  <main><section><h2>최근 사건</h2><table><thead><tr><th>사건</th><th>판정</th><th>점수</th></tr></thead><tbody id="incidents"></tbody></table></section><section><h2>증거·설정</h2><pre id="detail">사건을 선택하세요.</pre><h3>정책과 모델</h3><pre id="settings">연결 후 표시됩니다.</pre></section></main>
+  <script>
+    const state = { token: sessionStorage.getItem('weavexdr-token') || '', incidents: [], streaming: false };
+    const auth = () => ({ Authorization: `Bearer ${state.token}` });
+    async function loadIncidents() {
+      const response = await fetch('/incidents', { headers: auth() });
+      if (!response.ok) throw new Error(`API ${response.status}`);
+      state.incidents = await response.json(); render();
+      document.querySelector('#connection').textContent = '로컬 API 연결됨';
+      await loadSettings(); if (!state.streaming) streamEvents();
+    }
+    function render() {
+      document.querySelector('#total').textContent = state.incidents.length;
+      document.querySelector('#suspicious').textContent = state.incidents.filter(x => x.verdict === 'suspicious').length;
+      document.querySelector('#review').textContent = state.incidents.filter(x => x.verdict === 'needs_review').length;
+      const body = document.querySelector('#incidents'); body.replaceChildren();
+      state.incidents.forEach(item => {
+        const row = document.createElement('tr');
+        [item.incident_id, item.verdict, item.risk_score].forEach((value, index) => {
+          const cell = document.createElement('td');
+          // 사건 값은 수집 입력에서 유래하므로 HTML로 해석하지 않고 텍스트로만 표시한다.
+          cell.textContent = String(value);
+          if (index === 1 && ['suspicious', 'needs_review', 'benign'].includes(item.verdict)) cell.className = item.verdict;
+          row.appendChild(cell);
+        });
+        row.onclick = () => showDetail(item); body.appendChild(row);
+      });
+    }
+    function showDetail(item) { document.querySelector('#detail').textContent = JSON.stringify({ findings: item.findings, attack_chains: item.attack_chains, suppressed: item.suppressed_findings }, null, 2); }
+    async function loadSettings() {
+      const response = await fetch('/settings', { headers: auth() });
+      if (!response.ok) throw new Error(`설정 API ${response.status}`);
+      document.querySelector('#settings').textContent = JSON.stringify(await response.json(), null, 2);
+    }
+    async function streamEvents() {
+      state.streaming = true;
+      try {
+        const response = await fetch('/events', { headers: auth() }); if (!response.ok || !response.body) return;
+        const reader = response.body.getReader(), decoder = new TextDecoder(); let buffer = '';
+        while (true) { const { value, done } = await reader.read(); if (done) break; buffer += decoder.decode(value, {stream:true}); const messages = buffer.split('\n\n'); buffer = messages.pop(); messages.forEach(message => { const line = message.split('\n').find(x => x.startsWith('data:')); if (!line) return; const item = JSON.parse(line.slice(5)); state.incidents = [item, ...state.incidents.filter(x => x.incident_id !== item.incident_id)]; render(); }); }
+      } finally { state.streaming = false; }
+    }
+    document.querySelector('#token').value = state.token;
+    document.querySelector('#connect').onclick = () => { state.token = document.querySelector('#token').value; sessionStorage.setItem('weavexdr-token', state.token); loadIncidents().catch(error => document.querySelector('#connection').textContent = error.message); };
+    if (state.token) loadIncidents().catch(() => {});
+  </script>
+</body>
+</html>

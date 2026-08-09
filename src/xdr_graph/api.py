@@ -3,10 +3,13 @@ from __future__ import annotations
 import hmac
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
+from queue import Empty
 from threading import RLock
 
 import uvicorn
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
+from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel, Field, TypeAdapter
 
 from xdr_graph.models import IncidentReport
@@ -19,6 +22,10 @@ from xdr_graph.response import (
 )
 from xdr_graph.response_execution import ActualResponseService, ExecutionResult
 from xdr_graph.storage import SQLiteEventStore
+from xdr_graph.events import IncidentEventBroker
+from xdr_graph.allowlist import load_default_allowlist_engine
+from xdr_graph.detection import load_default_detection_engine
+from xdr_graph.risk_policy import load_default_risk_policy
 
 
 _command_adapter = TypeAdapter(ResponseCommand)
@@ -47,6 +54,10 @@ class ApiRuntime:
     dry_run_service: DryRunResponseService
     approval_service: ApprovalService
     actual_response_service: ActualResponseService | None = None
+    event_broker: IncidentEventBroker = field(default_factory=IncidentEventBroker)
+    model_status: dict[str, object] = field(
+        default_factory=lambda: {"provider": "rule_based", "available": True}
+    )
     commands: dict[str, ResponseCommand] = field(default_factory=dict)
     previews: dict[str, DryRunResult] = field(default_factory=dict)
     lock: RLock = field(default_factory=RLock)
@@ -88,6 +99,11 @@ def create_app(
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
+    @app.get("/dashboard", response_class=HTMLResponse)
+    def dashboard() -> str:
+        dashboard_path = Path(__file__).parent / "static" / "dashboard.html"
+        return dashboard_path.read_text(encoding="utf-8")
+
     @app.get("/incidents", response_model=list[IncidentReport], dependencies=protected)
     def list_incidents(limit: int = 100, offset: int = 0):
         try:
@@ -105,6 +121,36 @@ def create_app(
         if report is None:
             raise HTTPException(status_code=404, detail="incident was not found")
         return report
+
+    @app.get("/settings", dependencies=protected)
+    def settings():
+        rules = load_default_detection_engine().bundle
+        risk = load_default_risk_policy()
+        allowlist = load_default_allowlist_engine().policy
+        return {
+            "detection_rule_version": rules.rule_version,
+            "risk_policy_version": risk.policy_version,
+            "allowlist_policy_version": allowlist.policy_version,
+            "allowlist_entries": [entry.model_dump(mode="json") for entry in allowlist.entries],
+            "model": runtime.model_status,
+        }
+
+    @app.get("/events", dependencies=protected)
+    def stream_events():
+        subscriber = runtime.event_broker.subscribe()
+
+        def event_stream():
+            try:
+                while True:
+                    try:
+                        report = subscriber.get(timeout=15)
+                        yield f"event: incident\ndata: {report.model_dump_json()}\n\n"
+                    except Empty:
+                        yield ": heartbeat\n\n"
+            finally:
+                runtime.event_broker.unsubscribe(subscriber)
+
+        return StreamingResponse(event_stream(), media_type="text/event-stream")
 
     @app.post("/responses/preview", response_model=DryRunResult, dependencies=protected)
     def preview_response(payload: dict):

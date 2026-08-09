@@ -17,6 +17,7 @@ from xdr_graph.ingestion import (
     NormalizedEventBatch,
 )
 from xdr_graph.models import IncidentReport, SecurityEvent
+from xdr_graph.events import IncidentPublisher
 
 
 _event_adapter = TypeAdapter(SecurityEvent)
@@ -316,9 +317,11 @@ class PersistentIngestionService:
         self,
         store: SQLiteEventStore,
         graph_service: GraphIngestionService | None = None,
+        event_publisher: IncidentPublisher | None = None,
     ) -> None:
         self.store = store
         self.graph_service = graph_service or GraphIngestionService()
+        self.event_publisher = event_publisher
 
     def submit(self, batch: NormalizedEventBatch) -> IngestionReceipt:
         self.store.cleanup_if_due()
@@ -351,6 +354,8 @@ class PersistentIngestionService:
         analysis_batch = batch.model_copy(update={"events": all_events})
         graph_receipt = self.graph_service.submit(analysis_batch)
         self.store.save_processed_batch(batch, fresh_events, graph_receipt.report)
+        if self.event_publisher:
+            self.event_publisher.publish(graph_receipt.report)
         return IngestionReceipt(
             batch_id=batch.batch_id,
             incident_id=batch.incident_id,
