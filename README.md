@@ -145,4 +145,4 @@ powershell.exe -ExecutionPolicy Bypass -File .\scripts\verify_sysmon.ps1 -Output
 - 실제 프로세스 종료와 파일 격리
 - 장기 보안 지식 그래프
 
-상세 설계는 [XDR AI 그래프 엔지니어링 설계 정리](XDR_AI_그래프_엔지니어링_설계_정리.md), 전체 작업 순서와 진행 상태는 [프로젝트 로드맵](PROJECT_ROADMAP.md)을 참고한다.
+상세 설계는 [XDR AI 그래프 엔지니어링 설계 정리](XDR_AI_그래프_엔지니어링_설계_정리.md), 전체 작업 순서와 진행 상태는 [프로젝트 로드맵](PROJECT_ROADMAP.md), 외부 공격 기준과 행위 탐지 원칙은 [탐지 기준 및 위협 정보 정책](docs/DETECTION_POLICY.md)을 참고한다.
