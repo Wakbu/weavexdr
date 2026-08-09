@@ -136,6 +136,14 @@ class AttackChain(BaseModel):
     ended_at: datetime
 
 
+class SuppressedFinding(BaseModel):
+    """허용 목록으로 점수에서 제외했지만 감사 목적으로 보존하는 탐지."""
+
+    finding: Finding
+    allowlist_entry_id: str
+    reason: str
+
+
 class ValidationResult(BaseModel):
     passed: bool
     errors: list[str]
@@ -149,12 +157,18 @@ class IncidentReport(BaseModel):
     evidence: list[str]
     recommended_actions: list[str]
     validation: ValidationResult
+    findings: list[Finding] = Field(default_factory=list)
+    suppressed_findings: list[SuppressedFinding] = Field(default_factory=list)
+    attack_chains: list[AttackChain] = Field(default_factory=list)
+    source_events: list[SecurityEvent] = Field(default_factory=list)
 
 
 class IncidentState(TypedDict, total=False):
     raw_incident: dict[str, Any]
     incident: IncidentInput
     findings: Annotated[list[Finding], operator.add]
+    effective_findings: list[Finding]
+    suppressed_findings: list[SuppressedFinding]
     attack_chains: list[AttackChain]
     risk_score: int
     verdict: Literal["benign", "needs_review", "suspicious"]

@@ -43,7 +43,9 @@ def evaluate_case(case: EvaluationCase) -> CaseResult:
         {"raw_incident": case.incident.model_dump(mode="json"), "findings": []}
     )
     report = result["report"]
-    rule_ids = {finding.rule_id for finding in result.get("findings", [])}
+    # 허용 목록으로 제외된 탐지는 원본 상태에는 감사용으로 남아 있으므로,
+    # 실제 판정에 사용된 보고서 finding만 평가해야 오탐 회귀 사례를 검증할 수 있다.
+    rule_ids = {finding.rule_id for finding in report.findings}
     failures: list[str] = []
 
     # 판정뿐 아니라 점수 범위와 필수 규칙까지 확인해 우연히 같은 판정이

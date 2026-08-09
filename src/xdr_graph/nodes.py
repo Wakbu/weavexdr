@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from xdr_graph.correlation import EventCorrelationEngine
 from xdr_graph.detection import DetectionRuleEngine, load_default_detection_engine
+from xdr_graph.allowlist import AllowlistEngine, load_default_allowlist_engine
 from xdr_graph.models import (
     Finding,
     IncidentInput,
@@ -49,14 +50,26 @@ def correlate_events(
     return {"attack_chains": chains, "findings": findings}
 
 
+def apply_allowlist(
+    state: IncidentState, engine: AllowlistEngine | None = None
+) -> dict:
+    active_engine = engine or load_default_allowlist_engine()
+    remaining, suppressed = active_engine.apply(
+        state.get("findings", []), state["incident"].events
+    )
+    return {"effective_findings": remaining, "suppressed_findings": suppressed}
+
+
 def synthesize_incident(state: IncidentState, model_adapter: ModelAdapter) -> dict:
-    decision = model_adapter.synthesize(state["incident"], state.get("findings", []))
+    decision = model_adapter.synthesize(
+        state["incident"], state.get("effective_findings", state.get("findings", []))
+    )
     return decision.model_dump()
 
 
 def verify_incident(state: IncidentState) -> dict:
     errors: list[str] = []
-    findings = state.get("findings", [])
+    findings = state.get("effective_findings", state.get("findings", []))
 
     if state["verdict"] == "suspicious":
         sources = {finding.source for finding in findings}
@@ -115,5 +128,9 @@ def create_report(state: IncidentState) -> dict:
             errors=validation_errors,
             review_count=state.get("review_count", 0),
         ),
+        findings=state.get("effective_findings", state.get("findings", [])),
+        suppressed_findings=state.get("suppressed_findings", []),
+        attack_chains=state.get("attack_chains", []),
+        source_events=state["incident"].events,
     )
     return {"report": report}
