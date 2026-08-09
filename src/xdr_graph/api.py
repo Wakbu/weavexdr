@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hmac
 import os
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from queue import Empty
@@ -29,6 +30,16 @@ from xdr_graph.risk_policy import load_default_risk_policy
 
 
 _command_adapter = TypeAdapter(ResponseCommand)
+
+
+def load_dashboard_html() -> str:
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        # PyInstaller one-file 실행 시 소스의 __file__ 위치와 데이터 압축 해제
+        # 위치가 달라질 수 있으므로 공식 임시 번들 루트를 기준으로 찾는다.
+        dashboard_path = Path(sys._MEIPASS) / "xdr_graph" / "static" / "dashboard.html"
+    else:
+        dashboard_path = Path(__file__).parent / "static" / "dashboard.html"
+    return dashboard_path.read_text(encoding="utf-8")
 
 
 class ApprovalRequestBody(BaseModel):
@@ -72,6 +83,9 @@ def create_app(
     if len(api_token) < 32:
         raise ValueError("API token must contain at least 32 characters")
 
+    # 서버 시작 시 정적 자원을 먼저 읽어 EXE 번들 누락을 브라우저의 늦은 500
+    # 오류가 아니라 시작/릴리스 검증 단계에서 발견한다.
+    dashboard_html = load_dashboard_html()
     app = FastAPI(title="WeaveXDR Local API", version="0.1.0")
 
     async def require_local_token(
@@ -100,9 +114,9 @@ def create_app(
         return {"status": "ok"}
 
     @app.get("/dashboard", response_class=HTMLResponse)
-    def dashboard() -> str:
-        dashboard_path = Path(__file__).parent / "static" / "dashboard.html"
-        return dashboard_path.read_text(encoding="utf-8")
+    def dashboard() -> HTMLResponse:
+        # 명시적인 응답 객체를 사용해 번들 환경에서 문자열 응답 모델 추론을 거치지 않는다.
+        return HTMLResponse(content=dashboard_html)
 
     @app.get("/incidents", response_model=list[IncidentReport], dependencies=protected)
     def list_incidents(limit: int = 100, offset: int = 0):

@@ -48,6 +48,10 @@ def verify_embedded_server(app) -> None:
         with urlopen(f"http://127.0.0.1:{port}/health", timeout=3) as response:
             if response.status != 200 or response.read() != b'{"status":"ok"}':
                 raise RuntimeError("embedded server health check failed")
+        with urlopen(f"http://127.0.0.1:{port}/dashboard", timeout=3) as response:
+            dashboard_body = response.read().decode("utf-8")
+            if response.status != 200 or "<title>WeaveXDR</title>" not in dashboard_body:
+                raise RuntimeError("embedded dashboard check failed")
     finally:
         server.should_exit = True
         server_thread.join(timeout=5)

@@ -17,12 +17,17 @@ PROJECT_ROOT = Path(__file__).parents[1]
 
 def test_embedded_uvicorn_server_returns_health():
     from fastapi import FastAPI
+    from fastapi.responses import HTMLResponse
 
     app = FastAPI()
 
     @app.get("/health")
     def health():
         return {"status": "ok"}
+
+    @app.get("/dashboard")
+    def dashboard():
+        return HTMLResponse("<title>WeaveXDR</title>")
 
     verify_embedded_server(app)
 
