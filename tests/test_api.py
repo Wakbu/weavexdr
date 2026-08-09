@@ -167,3 +167,24 @@ def test_authenticated_shutdown_runs_the_desktop_callback():
         assert runtime.shutdown_event.is_set()
     finally:
         store.close()
+
+
+def test_collector_setup_requires_authentication_and_runs_explicit_callback():
+    client, store = build_client()
+    requested = Event()
+    runtime = ApiRuntime(
+        event_store=store,
+        dry_run_service=DryRunResponseService(),
+        approval_service=ApprovalService(),
+        collector_setup_callback=requested.set,
+    )
+    setup_client = TestClient(
+        create_app(runtime, api_token=TOKEN, enforce_loopback=False)
+    )
+    try:
+        assert setup_client.post("/collector/configure").status_code == 401
+        response = setup_client.post("/collector/configure", headers=AUTH)
+        assert response.json() == {"status": "elevation_requested"}
+        assert requested.wait(timeout=1)
+    finally:
+        store.close()

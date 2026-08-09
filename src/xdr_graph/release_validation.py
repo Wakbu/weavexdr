@@ -18,6 +18,7 @@ REQUIRED_WINDOWS_PACKAGE_FILES = {
     "WeaveXDR.exe",
     "install.ps1",
     "uninstall.ps1",
+    "configure_sysmon_access.ps1",
     "weavexdr-release.json",
 }
 
@@ -50,7 +51,7 @@ def validate_windows_package(package_path: str | Path) -> list[str]:
                 manifest = json.loads(package.read("weavexdr-release.json").decode("utf-8-sig"))
                 if not re.fullmatch(r"\d{8}\.\d+", str(manifest.get("version", ""))):
                     errors.append("package version must use YYYYMMDD.PATCH")
-            for script_name in ("install.ps1", "uninstall.ps1"):
+            for script_name in ("install.ps1", "uninstall.ps1", "configure_sysmon_access.ps1"):
                 if script_name in names:
                     package.read(script_name).decode("utf-8-sig")
     except (OSError, zipfile.BadZipFile, UnicodeDecodeError, json.JSONDecodeError) as error:

@@ -78,6 +78,11 @@ def test_dashboard_and_settings_are_available_without_rendering_event_html():
         assert "state.streamController?.abort()" in dashboard.text
         assert "clearInterval(state.statusTimer)" in dashboard.text
         assert "if(!badge||!sideStatus)return" in dashboard.text
+        assert 'id="overview-topology"' in dashboard.text
+        assert 'id="overview-geo"' in dashboard.text
+        assert 'data-tab="graph"' in dashboard.text
+        assert "createElementNS" in dashboard.text
+        assert "'/collector/configure'" in dashboard.text
 
         assert client.get("/settings").status_code == 401
         settings = client.get("/settings", headers=AUTH).json()

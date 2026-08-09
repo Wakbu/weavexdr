@@ -83,16 +83,22 @@ class NetworkConnectEvent(BaseSecurityEvent):
     process_guid: str | None = None
     image_path: str | None = None
     user: str | None = None
+    # 양쪽 주소와 연결 방향을 보존해야 외부에서 들어온 연결과 로컬
+    # 프로세스가 시작한 외부 연결을 조사 화면에서 혼동하지 않는다.
+    source_ip: str | None = None
+    source_port: int | None = Field(default=None, ge=1, le=65535)
     destination_ip: str
     destination_port: int | None = Field(default=None, ge=1, le=65535)
+    destination_hostname: str | None = None
+    initiated: bool | None = None
     protocol: Literal["tcp", "udp", "unknown"] = "unknown"
 
-    @field_validator("destination_ip")
+    @field_validator("source_ip", "destination_ip")
     @classmethod
-    def validate_destination_ip(cls, value: str) -> str:
+    def validate_network_ip(cls, value: str | None) -> str | None:
         # 분석 노드는 이미 정규화된 IP만 받는다. 호스트명 해석이나 잘못된
         # 원문 처리는 향후 수집기에서 담당하고 여기서는 계약을 엄격히 지킨다.
-        return str(ip_address(value))
+        return str(ip_address(value)) if value is not None else None
 
 
 # event_type을 판별자로 사용하면 Pydantic이 필요한 필드를 이벤트 종류별로

@@ -19,11 +19,19 @@ ZIP의 `WeaveXDR.exe`는 설치 없이 실행하는 로컬 대시보드 실행�
 
 ## Sysmon 실시간 수집
 
-WeaveXDR는 Sysmon Operational 로그의 프로세스 생성(1), 네트워크 연결(3), 파일 생성(11)을 새 레코드부터 실시간 수집한다. 포터블 EXE가 `Sysmon 로그 읽기 권한 부족`을 표시하면 압축 폴더의 다음 스크립트를 관리자 PowerShell에서 한 번 실행하고 WeaveXDR를 재시작한다.
+WeaveXDR는 Sysmon Operational 로그의 프로세스 생성(1), 네트워크 연결(3), 파일 생성(11)을 새 레코드부터 실시간 수집한다. 포터블 EXE가 `Sysmon 로그 읽기 권한 부족`을 표시하면 대시보드의 `수집 권한 설정` 버튼을 누른다. Windows UAC에서 허용하면 내장 스크립트가 실행되고 수집기가 자동 재연결되므로 사용자가 경로나 명령을 직접 입력할 필요가 없다.
+
+수동 복구가 필요한 경우에만 압축 폴더의 다음 스크립트를 관리자 PowerShell에서 실행한다.
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
 .\configure_sysmon_access.ps1
+```
+
+설정을 바꾸지 않고 관리자 권한·대상 사용자·기존 읽기 권한만 점검하려면 다음을 실행한다.
+
+```powershell
+.\configure_sysmon_access.ps1 -CheckOnly
 ```
 
 스크립트는 현재 로그인 사용자에게 Sysmon 채널의 읽기 권한 `0x1`만 추가하고 기존 채널 SDDL을 `%ProgramData%\WeaveXDR`에 백업한다. 원상 복구는 다음과 같다.

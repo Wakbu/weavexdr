@@ -88,6 +88,7 @@ class ApiRuntime:
             "sources": [],
         }
     )
+    collector_setup_callback: Callable[[], None] | None = None
     shutdown_callback: Callable[[], None] | None = None
     shutdown_event: Event = field(default_factory=Event)
     commands: dict[str, ResponseCommand] = field(default_factory=dict)
@@ -223,6 +224,15 @@ def create_app(
             "model": runtime.model_status,
             "active_response": runtime.actual_response_service is not None,
         }
+
+    @app.post("/collector/configure", dependencies=protected)
+    def configure_collector():
+        if runtime.collector_setup_callback is None:
+            raise HTTPException(status_code=503, detail="collector setup is unavailable")
+        # 관리자 권한 상승은 서버가 몰래 수행하지 않고 사용자가 대시보드에서
+        # 명시적으로 누른 뒤 Windows UAC 확인창을 통해 승인하도록 한다.
+        runtime.collector_setup_callback()
+        return {"status": "elevation_requested"}
 
     @app.post(
         "/demo/incidents",

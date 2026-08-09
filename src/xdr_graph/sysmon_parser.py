@@ -127,8 +127,12 @@ class SysmonXmlParser:
             process_guid=process_guid,
             image_path=image_path,
             user=fields.get("User"),
+            source_ip=fields.get("SourceIp"),
+            source_port=self._parse_int(fields.get("SourcePort")),
             destination_ip=fields["DestinationIp"],
             destination_port=self._parse_int(fields.get("DestinationPort")),
+            destination_hostname=fields.get("DestinationHostname"),
+            initiated=self._parse_bool(fields.get("Initiated")),
             protocol=self._protocol(fields.get("Protocol")),
         )
 
@@ -182,6 +186,17 @@ class SysmonXmlParser:
         if value is None or not value.strip():
             return None
         return int(value, 0)
+
+    @staticmethod
+    def _parse_bool(value: str | None) -> bool | None:
+        if value is None:
+            return None
+        lowered = value.strip().lower()
+        if lowered in {"true", "1"}:
+            return True
+        if lowered in {"false", "0"}:
+            return False
+        return None
 
     @staticmethod
     def _image_name(image_path: str | None) -> str | None:

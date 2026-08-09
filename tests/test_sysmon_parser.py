@@ -60,8 +60,12 @@ def network_connect_xml() -> str:
             "Image": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
             "User": "DESKTOP-TEST\\user",
             "Protocol": "tcp",
+            "Initiated": "true",
+            "SourceIp": "192.168.0.10",
+            "SourcePort": "53001",
             "DestinationIp": "8.8.8.8",
             "DestinationPort": "443",
+            "DestinationHostname": "dns.google",
         },
     )
 
@@ -105,6 +109,10 @@ def test_process_guid_enriches_network_and_file_events():
     assert network_event.process_start_time == process_event.process_start_time
     assert file_event.process_start_time == process_event.process_start_time
     assert network_event.destination_port == 443
+    assert network_event.source_ip == "192.168.0.10"
+    assert network_event.source_port == 53001
+    assert network_event.destination_hostname == "dns.google"
+    assert network_event.initiated is True
     assert file_event.file_path.endswith("payload.exe")
 
 

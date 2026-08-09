@@ -1,5 +1,6 @@
-param(
-    [switch]$Restore
+﻿param(
+    [switch]$Restore,
+    [switch]$CheckOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -33,13 +34,24 @@ $userSid = $account.Translate([Security.Principal.SecurityIdentifier]).Value
 
 [xml]$channelConfig = (& wevtutil.exe gl $logName /f:xml | Out-String)
 if ($LASTEXITCODE -ne 0) { throw "Sysmon 로그 채널을 찾을 수 없습니다." }
-$accessNode = $channelConfig.SelectSingleNode("//*[local-name()='channelAccess']")
+# wevtutil의 XML에서 channelAccess는 별도 요소가 아니라 channel 요소의 속성이다.
+# local-name()을 사용해 Windows 버전에 따라 기본 XML namespace가 있어도 동일하게 읽는다.
+$accessNode = $channelConfig.SelectSingleNode("/*[local-name()='channel']/@channelAccess")
 if ($null -eq $accessNode -or [string]::IsNullOrWhiteSpace($accessNode.InnerText)) {
     throw "Sysmon 채널의 기존 보안 설명자를 읽을 수 없습니다."
 }
 $currentAccess = $accessNode.InnerText.Trim()
 $readAce = "(A;;0x1;;;$userSid)"
-if ($currentAccess.Contains($readAce)) {
+$alreadyConfigured = $currentAccess.Contains($readAce)
+
+if ($CheckOnly) {
+    # 채널 ACL을 바꾸지 않고 관리자 권한, 사용자 SID와 기존 설정을 점검한다.
+    Write-Host "Sysmon 채널 확인 완료 / Channel check completed"
+    Write-Host "대상 사용자 / Target user: $interactiveUser"
+    Write-Host "읽기 권한 설정 여부 / Read access configured: $alreadyConfigured"
+    exit 0
+}
+if ($alreadyConfigured) {
     Write-Host "이미 Sysmon 읽기 권한이 있습니다 / Read access already configured"
     exit 0
 }

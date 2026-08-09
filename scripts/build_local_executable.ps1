@@ -24,6 +24,7 @@ try {
         --paths (Join-Path $projectRoot "src") `
         --add-data "$(Join-Path $projectRoot 'config');xdr_graph/config" `
         --add-data "$(Join-Path $projectRoot 'src\xdr_graph\static');xdr_graph/static" `
+        --add-data "$(Join-Path $projectRoot 'scripts\configure_sysmon_access.ps1');xdr_graph/tools" `
         --collect-all langgraph `
         --collect-all charset_normalizer `
         --collect-all uvicorn `

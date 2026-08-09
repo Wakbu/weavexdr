@@ -99,6 +99,126 @@
     .toast.show { transform:none; opacity:1; }
     @media (max-width:1050px) { .shell{grid-template-columns:74px 1fr}.brand span,.nav-label,.nav button span:not(.nav-icon),.sidebar-footer{display:none}.brand{padding-left:3px}.nav button{justify-content:center}.kpi-grid{grid-template-columns:repeat(2,1fr)}.investigation-shell{grid-template-columns:1fr}.settings-grid{grid-template-columns:1fr} }
     @media (max-width:720px) { .topbar{padding:0 16px}.content{padding:18px 16px}.dashboard-grid,.kpi-grid{grid-template-columns:1fr}.top-actions .secondary{display:none}.severity-wrap{grid-template-columns:120px 1fr}.search{min-width:100%}.table-panel{overflow:auto}.incident-hero{flex-direction:column}.hero-score{border-left:0;border-top:1px solid var(--line);padding:12px 0 0;text-align:left}.detail-grid{grid-template-columns:1fr} }
+
+    /* 제품 화면은 장식보다 정보 밀도와 계층을 우선한다. 과한 그라데이션·광택·둥근
+       카드 대신 중성적인 흑연색, 얇은 구분선, 상태색만 사용한다. */
+    :root {
+      --bg:#0b0d10; --sidebar:#101216; --surface:#14171b; --surface-2:#191d22;
+      --line:#2b3037; --line-soft:#22272d; --text:#f1f3f5; --muted:#9299a2;
+      --blue:#7aa2f7; --cyan:#64d8cb; --red:#ff6b6b; --amber:#e9b949;
+      --green:#6fd5a0; --purple:#aa91e8;
+      font-family:"Segoe UI Variable", "Pretendard", "Noto Sans KR", system-ui, sans-serif;
+    }
+    body { background:var(--bg); font-size:13px; }
+    .shell { grid-template-columns:218px 1fr; }
+    .sidebar { padding:20px 13px; background:var(--sidebar); }
+    .brand { padding:0 8px 27px; font-size:17px; letter-spacing:.1px; }
+    .brand-mark { width:30px; height:30px; clip-path:none; border-radius:6px; background:#eceff3; color:#101216; font-size:11px; letter-spacing:.5px; }
+    .nav-label { color:#686f78; font-size:9px; padding:7px 10px; }
+    .nav button { border-radius:5px; padding:10px; font-size:12px; }
+    .nav button:hover { background:#181c21; }
+    .nav button.active { background:#1c2127; box-shadow:inset 2px 0 var(--cyan); color:#fff; }
+    .topbar { height:68px; padding:0 26px; background:#0d0f12f2; backdrop-filter:blur(10px); }
+    .page-title { font-size:18px; font-weight:650; }
+    .page-subtitle { font-size:11px; }
+    .content { padding:22px 26px 48px; max-width:1720px; }
+    .card,.panel { border-radius:7px; box-shadow:none; }
+    .panel { padding:16px; }
+    .icon-button,.primary,.secondary { border-radius:5px; padding:8px 11px; font-size:11px; }
+    .primary { background:#e7ebef; border-color:#e7ebef; color:#111418; }
+    .primary:hover { background:#fff; }
+    .connection { border-radius:4px; background:#14251f; padding:7px 9px; font-size:10px; }
+    .banner { border-radius:6px; padding:11px 13px; margin-bottom:12px; background:#181b1f; border-color:#413b28; }
+    .banner-icon { width:30px; height:30px; border-radius:4px; background:#292617; }
+    .banner-copy strong { font-size:12px; margin-bottom:2px; }
+    .banner-copy span { color:#aaa58e; font-size:10px; }
+    .eyebrow { display:block; color:#6f7781!important; font:600 9px/1.2 ui-monospace,SFMono-Regular,Consolas,monospace; letter-spacing:1.2px; margin-bottom:5px; }
+    .panel-title { align-items:flex-start; margin-bottom:12px; }
+    .panel-title h3 { font-size:13px; font-weight:650; }
+    .signal-strip { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); border:1px solid var(--line); background:var(--surface); margin-bottom:12px; }
+    .signal-cell { min-height:84px; padding:14px 16px; display:grid; grid-template-columns:1fr auto; gap:3px 12px; border-right:1px solid var(--line); position:relative; }
+    .signal-cell:last-child { border-right:0; }
+    .signal-cell::before { content:""; position:absolute; left:0; top:14px; bottom:14px; width:2px; background:#5f6872; }
+    .signal-cell.critical::before { background:var(--red); }
+    .signal-cell.review::before { background:var(--amber); }
+    .signal-cell.health::before { background:var(--green); }
+    .signal-cell span { color:var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:.7px; }
+    .signal-cell strong { grid-row:1/3; grid-column:2; align-self:center; font-size:25px; font-weight:650; font-variant-numeric:tabular-nums; }
+    .signal-cell.health strong { font-size:17px; }
+    .signal-cell small { color:#686f78; font-size:10px; }
+    .operations-grid { display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:12px; margin-bottom:12px; }
+    .topology-panel { grid-column:span 8; min-height:390px; }
+    .geo-card { grid-column:span 4; min-height:390px; }
+    .trend-panel { grid-column:span 8; }
+    .severity-panel { grid-column:span 4; }
+    .graph-legend { display:flex; gap:13px; flex-wrap:wrap; color:var(--muted); font-size:9px; }
+    .graph-legend span { display:flex; align-items:center; gap:5px; }
+    .entity-dot { width:7px; height:7px; border-radius:50%; display:inline-block; background:#6f7781; }
+    .entity-dot.external { background:var(--red); }.entity-dot.endpoint { background:var(--cyan); }.entity-dot.process { background:var(--blue); }.entity-dot.file { background:var(--amber); }
+    .topology-canvas,.attack-graph { min-height:315px; border:1px solid var(--line-soft); background-color:#101317; background-image:linear-gradient(#1b2026 1px,transparent 1px),linear-gradient(90deg,#1b2026 1px,transparent 1px); background-size:32px 32px; overflow:hidden; position:relative; }
+    .topology-canvas svg,.attack-graph svg,.geo-map svg { width:100%; height:100%; display:block; }
+    .topology-empty { height:315px; display:grid; place-items:center; color:var(--muted); font-size:11px; text-align:center; line-height:1.7; }
+    .graph-edge { stroke:#45505c; stroke-width:1.2; fill:none; }
+    .graph-edge.alert { stroke:#bd555d; stroke-width:1.7; }
+    .graph-edge-label { fill:#8d959e; font-size:9.5px; font-family:ui-monospace,Consolas,monospace; }
+    .graph-node { cursor:pointer; }
+    .graph-node rect { fill:#181c21; stroke:#3a424c; stroke-width:1; rx:4; }
+    .graph-node:hover rect,.graph-node.active rect { stroke:#d6dce2; fill:#20252b; }
+    .graph-node .node-type { fill:#838b94; font-size:9px; letter-spacing:.8px; }
+    .graph-node .node-title { fill:#f2f4f6; font-size:12px; font-weight:600; }
+    .graph-node .node-detail { fill:#9aa2ab; font-size:9.5px; }
+    .graph-node circle { stroke:#101317; stroke-width:3; }
+    .geo-map { height:210px; border:1px solid var(--line-soft); background:#101317; overflow:hidden; }
+    .geo-map.compact { height:145px; }
+    .map-grid { stroke:#20262d; stroke-width:.7; }
+    .land { fill:#1b2127; stroke:#303840; stroke-width:.7; }
+    .map-arc { fill:none; stroke:#95515a; stroke-width:1.3; stroke-dasharray:3 3; }
+    .map-point { fill:var(--red); stroke:#31191d; stroke-width:3; }
+    .map-home { fill:var(--cyan); stroke:#153432; stroke-width:3; }
+    .map-label { fill:#b5bbc2; font-size:9px; }
+    .origin-list { display:grid; margin-top:10px; }
+    .origin-row { display:grid; grid-template-columns:8px minmax(0,1fr) auto; gap:8px; align-items:center; padding:8px 0; border-top:1px solid var(--line-soft); font-size:10px; }
+    .origin-row:first-child { border-top:0; }
+    .origin-row i { width:5px; height:5px; border-radius:50%; background:var(--red); }
+    .origin-row div { min-width:0; }.origin-row strong { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:10px; }.origin-row span { color:var(--muted); font-size:9px; }
+    .origin-row code { color:#c6ccd2; font-size:9px; }
+    .trend { height:155px; background:none; }
+    .trend-bar { border-radius:1px; background:var(--cyan); box-shadow:none; opacity:.8; }
+    .donut::after { background:var(--surface); }
+    .severity-wrap { min-height:155px; }
+    .table-panel { border-radius:7px; }
+    th { background:#111418; color:#747c85; font-size:9px; text-transform:uppercase; letter-spacing:.5px; }
+    td { padding:12px 16px; font-size:11px; }
+    tbody tr:hover { background:#191e23; }
+    .badge { border-radius:3px; padding:3px 6px; font-size:9px; }
+    .badge.suspicious { background:#30191d; }.badge.needs_review { background:#302817; }.badge.benign { background:#142b21; }
+    .incident-hero { border-radius:7px; background:#14171b; padding:17px; }
+    .incident-hero h2 { font-size:18px; font-weight:650; }
+    .hero-score strong { font-weight:600; }
+    .investigation-shell { grid-template-columns:minmax(0,1fr) 300px; }
+    .investigation-main { min-height:600px; }
+    .tabs { gap:15px; padding:0 17px; }
+    .tabs button { padding:13px 0 11px; font-size:10px; text-transform:uppercase; letter-spacing:.5px; }
+    .tabs button.active { border-color:var(--cyan); }
+    .tab-content { min-height:535px; padding:17px; }
+    .attack-graph { height:485px; }
+    .graph-toolbar { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:10px; }
+    .graph-toolbar p { margin:0; color:var(--muted); font-size:10px; }
+    .graph-chip-row { display:flex; gap:5px; flex-wrap:wrap; }
+    .graph-chip { border:1px solid var(--line); color:#aab1b9; background:#171a1f; border-radius:3px; padding:4px 7px; font-size:9px; }
+    .entity-details { display:grid; gap:10px; }
+    .entity-details .entity-kind { color:var(--cyan); font:600 9px ui-monospace,Consolas,monospace; letter-spacing:1px; }
+    .entity-details h4 { margin:0; font-size:13px; word-break:break-word; }
+    .entity-field { border-top:1px solid var(--line-soft); padding-top:8px; }
+    .entity-field span { color:#707780; display:block; font-size:9px; margin-bottom:3px; }
+    .entity-field strong { display:block; color:#cbd0d5; font:9px/1.55 ui-monospace,Consolas,monospace; overflow-wrap:anywhere; }
+    .detail-item,.evidence-card,.timeline-item,.action-item { border-radius:4px; background:#111418; }
+    .search,select,.token-box input,.modal input { border-radius:4px; background:#111418; }
+    .modal { border-radius:7px; }
+    .toast { border-radius:5px; }
+    @media (max-width:1180px) { .topology-panel,.trend-panel{grid-column:span 7}.geo-card,.severity-panel{grid-column:span 5}.investigation-shell{grid-template-columns:1fr}.side-stack{grid-template-columns:repeat(2,minmax(0,1fr))} }
+    @media (max-width:900px) { .shell{grid-template-columns:68px 1fr}.signal-strip{grid-template-columns:repeat(2,1fr)}.signal-cell:nth-child(2){border-right:0}.signal-cell:nth-child(-n+2){border-bottom:1px solid var(--line)}.topology-panel,.geo-card,.trend-panel,.severity-panel{grid-column:1/-1}.topology-panel{min-height:350px}.side-stack{grid-template-columns:1fr 1fr} }
+    @media (max-width:640px) { .content{padding:15px 12px 40px}.topbar{padding:0 13px}.page-subtitle{display:none}.signal-strip{grid-template-columns:1fr}.signal-cell{border-right:0;border-bottom:1px solid var(--line)}.signal-cell:last-child{border-bottom:0}.graph-legend{display:none}.topology-panel,.geo-card{min-height:auto}.topology-canvas,.topology-empty{min-height:270px}.topology-canvas,.attack-graph{overflow:auto}.topology-canvas svg,.attack-graph svg{min-width:760px}.operations-grid{gap:9px}.side-stack{grid-template-columns:1fr}.attack-graph{height:400px}.graph-toolbar{align-items:flex-start;flex-direction:column}.tabs{gap:12px;overflow:auto}.tabs button{white-space:nowrap}.geo-map{height:180px} }
   </style>
 </head>
 <body>
@@ -121,16 +241,18 @@
     </header>
     <main class="content">
       <section class="page active" id="page-overview">
-        <div class="banner" id="collector-banner"><div class="banner-icon">!</div><div class="banner-copy"><strong>실시간 수집 상태를 확인하고 있습니다.</strong><span>잠시만 기다려 주세요.</span></div><button class="secondary" data-go="settings">설정 보기</button></div>
-        <div class="kpi-grid">
-          <div class="card kpi"><div class="kpi-label">전체 사건</div><div class="kpi-value" id="kpi-total">0</div><div class="kpi-note">로컬 DB에 저장된 사건</div></div>
-          <div class="card kpi danger"><div class="kpi-label">고위험</div><div class="kpi-value" id="kpi-high">0</div><div class="kpi-note">즉시 확인이 필요한 사건</div></div>
-          <div class="card kpi warn"><div class="kpi-label">검토 필요</div><div class="kpi-value" id="kpi-review">0</div><div class="kpi-note">추가 증거가 필요한 사건</div></div>
-          <div class="card kpi ok"><div class="kpi-label">보호 상태</div><div class="kpi-value" id="kpi-health">확인 중</div><div class="kpi-note" id="kpi-health-note">엔진 상태 점검 중</div></div>
+        <div class="banner" id="collector-banner"><div class="banner-icon">!</div><div class="banner-copy"><strong>실시간 수집 상태를 확인하고 있습니다.</strong><span>잠시만 기다려 주세요.</span></div><button class="secondary" id="collector-action">설정 보기</button></div>
+        <div class="signal-strip">
+          <div class="signal-cell"><span>전체 사건</span><strong id="kpi-total">0</strong><small>저장된 사건</small></div>
+          <div class="signal-cell critical"><span>고위험</span><strong id="kpi-high">0</strong><small>즉시 조사</small></div>
+          <div class="signal-cell review"><span>검토 필요</span><strong id="kpi-review">0</strong><small>증거 보강</small></div>
+          <div class="signal-cell health"><span>보호 상태</span><strong id="kpi-health">확인 중</strong><small id="kpi-health-note">엔진 상태 점검 중</small></div>
         </div>
-        <div class="dashboard-grid">
-          <div class="panel"><div class="panel-title"><h3>최근 사건 추이</h3><span>최근 7일</span></div><div class="trend" id="trend"></div></div>
-          <div class="panel"><div class="panel-title"><h3>위험도 분포</h3><span>전체 사건</span></div><div class="severity-wrap"><div class="donut" id="severity-donut"><div class="donut-center"><strong id="donut-total">0</strong><span>INCIDENTS</span></div></div><div class="legend"><div class="legend-row"><i class="legend-dot" style="background:var(--red)"></i><span>고위험</span><strong id="legend-high">0</strong></div><div class="legend-row"><i class="legend-dot" style="background:var(--amber)"></i><span>검토 필요</span><strong id="legend-review">0</strong></div><div class="legend-row"><i class="legend-dot" style="background:var(--green)"></i><span>정상</span><strong id="legend-benign">0</strong></div></div></div></div>
+        <div class="operations-grid">
+          <div class="panel topology-panel"><div class="panel-title"><div><span class="eyebrow">LIVE CORRELATION</span><h3>공격 관계도</h3></div><div class="graph-legend"><span><i class="entity-dot external"></i>외부 IP</span><span><i class="entity-dot endpoint"></i>호스트</span><span><i class="entity-dot process"></i>프로세스</span><span><i class="entity-dot file"></i>파일</span></div></div><div class="topology-canvas" id="overview-topology"></div></div>
+          <div class="panel geo-card"><div class="panel-title"><div><span class="eyebrow">NETWORK CONTEXT</span><h3>외부 연결 위치</h3></div><span>수집 이벤트 기준</span></div><div class="geo-map" id="overview-geo"></div><div class="origin-list" id="origin-list"></div></div>
+          <div class="panel trend-panel"><div class="panel-title"><div><span class="eyebrow">DETECTION VOLUME</span><h3>사건 추이</h3></div><span>최근 7일</span></div><div class="trend" id="trend"></div></div>
+          <div class="panel severity-panel"><div class="panel-title"><div><span class="eyebrow">SEVERITY</span><h3>위험도 분포</h3></div><span>전체 사건</span></div><div class="severity-wrap"><div class="donut" id="severity-donut"><div class="donut-center"><strong id="donut-total">0</strong><span>INCIDENTS</span></div></div><div class="legend"><div class="legend-row"><i class="legend-dot" style="background:var(--red)"></i><span>고위험</span><strong id="legend-high">0</strong></div><div class="legend-row"><i class="legend-dot" style="background:var(--amber)"></i><span>검토 필요</span><strong id="legend-review">0</strong></div><div class="legend-row"><i class="legend-dot" style="background:var(--green)"></i><span>정상</span><strong id="legend-benign">0</strong></div></div></div></div>
         </div>
         <div class="panel table-panel"><div class="table-head"><h3>최근 사건</h3><button class="secondary" data-go="incidents">전체 사건 보기 →</button></div><div id="overview-table"></div></div>
       </section>
@@ -144,7 +266,7 @@
         <div id="investigation-empty" class="panel empty"><div class="empty-icon">⌕</div><strong>조사할 사건을 선택하세요.</strong><p>사건 큐에서 항목을 선택하면 판단 근거, 원본 이벤트, 공격 흐름과 권장 대응을 한 화면에서 확인할 수 있습니다.</p><button class="secondary" data-go="incidents">사건 큐 열기</button></div>
         <div id="investigation-content" hidden>
           <div class="card incident-hero"><div><span class="badge" id="investigation-badge"></span><h2 id="investigation-title"></h2><div class="incident-id" id="investigation-id"></div></div><div class="hero-score"><span class="muted">RISK SCORE</span><strong id="investigation-score">0</strong><span class="muted">/ 100</span></div></div>
-          <div class="investigation-shell"><div class="panel" style="padding:0"><div class="tabs" id="investigation-tabs"><button class="active" data-tab="summary">요약</button><button data-tab="evidence">증거</button><button data-tab="attack">공격 흐름</button><button data-tab="response">대응</button></div><div class="tab-content" id="investigation-body"></div></div><aside class="side-stack"><div class="panel"><div class="panel-title"><h3>검증 상태</h3></div><div class="health-list" id="validation-list"></div></div><div class="panel"><div class="panel-title"><h3>데이터 출처</h3></div><div class="health-list" id="source-list"></div></div></aside></div>
+          <div class="investigation-shell"><div class="panel investigation-main" style="padding:0"><div class="tabs" id="investigation-tabs"><button class="active" data-tab="graph">공격 관계도</button><button data-tab="summary">요약</button><button data-tab="evidence">증거</button><button data-tab="attack">타임라인</button><button data-tab="response">대응</button></div><div class="tab-content" id="investigation-body"></div></div><aside class="side-stack"><div class="panel entity-inspector"><div class="panel-title"><div><span class="eyebrow">ENTITY</span><h3>선택 항목</h3></div></div><div id="entity-inspector"><p class="muted">관계도의 노드를 선택하면 세부 정보가 표시됩니다.</p></div></div><div class="panel"><div class="panel-title"><div><span class="eyebrow">GEO CONTEXT</span><h3>IP 위치</h3></div></div><div class="geo-map compact" id="investigation-geo"></div><div class="origin-list" id="investigation-origin"></div></div><div class="panel"><div class="panel-title"><h3>검증 상태</h3></div><div class="health-list" id="validation-list"></div></div><div class="panel"><div class="panel-title"><h3>데이터 출처</h3></div><div class="health-list" id="source-list"></div></div></aside></div>
         </div>
       </section>
 
@@ -166,7 +288,7 @@
 
 <script>
   const fragmentToken = new URLSearchParams(location.hash.slice(1)).get('token') || '';
-  const state = { token: '', incidents: [], settings: null, status: null, selected: null, tab: 'summary', streaming: false, streamController: null, statusTimer: null };
+  const state = { token: '', incidents: [], settings: null, status: null, selected: null, tab: 'graph', streaming: false, streamController: null, statusTimer: null };
   const pageInfo = { overview:['보안 개요','현재 PC의 탐지 상태와 주요 사건을 확인합니다.'], incidents:['사건','탐지된 사건을 필터링하고 우선순위에 따라 조사합니다.'], investigation:['조사','연결된 증거와 공격 흐름을 따라 사건을 분석합니다.'], settings:['설정','수집기, 탐지 정책, 모델과 연결 상태를 관리합니다.'] };
   const verdictLabel = { suspicious:'고위험', needs_review:'검토 필요', benign:'정상' };
   const eventLabel = { process_start:'프로세스 시작', file_create:'파일 생성', network_connect:'네트워크 연결' };
@@ -204,13 +326,17 @@
     document.querySelectorAll('.page').forEach(item=>item.classList.toggle('active',item.id===`page-${page}`));
     document.querySelectorAll('[data-nav]').forEach(item=>item.classList.toggle('active',item.dataset.nav===page));
     document.querySelector('#page-title').textContent=pageInfo[page][0]; document.querySelector('#page-subtitle').textContent=pageInfo[page][1];
+    // 긴 사건 목록에서 상세 화면으로 이동할 때 이전 스크롤 위치가 남으면
+    // 제목과 탭이 잘린 화면부터 보여 사용자가 레이아웃 오류로 오해할 수 있다.
+    window.scrollTo(0,0);
   }
-  function renderAll() { renderStatus(); renderMetrics(); renderTrend(); renderTables(); renderSettings(); if(state.selected) renderInvestigation(); }
+  function renderAll() { renderStatus(); renderMetrics(); renderTrend(); renderTables(); renderOverviewIntel(); renderSettings(); if(state.selected) renderInvestigation(); }
   function renderStatus() {
-    const collector=state.status?.collector||{}; const running=collector.state==='running',starting=collector.state==='starting',failed=collector.state==='error'; const banner=document.querySelector('#collector-banner');
+    const collector=state.status?.collector||{}; const running=collector.state==='running',starting=collector.state==='starting',failed=collector.state==='error',permissionError=(collector.label||'').includes('권한 부족'); const banner=document.querySelector('#collector-banner');
     banner.querySelector('strong').textContent=collector.label||(running?'실시간 Sysmon 수집 중':'수집 상태 확인 중');
     banner.querySelector('span').textContent=running?`새 사건을 자동 분석합니다. 처리 이벤트 ${collector.processed_events||0}개${collector.last_event_at?` · 마지막 수집 ${formatTime(collector.last_event_at)}`:''}`:failed?'Sysmon 설치와 이벤트 로그 읽기 권한을 확인하세요. 수집기는 자동으로 재시도합니다.':starting?'Windows 이벤트 로그 연결을 확인하고 있습니다.':'현재는 저장된 사건과 안전한 데모를 볼 수 있습니다.';
     banner.querySelector('.banner-icon').textContent=running?'✓':starting?'…':'!';
+    const collectorAction=document.querySelector('#collector-action');collectorAction.textContent=permissionError?'수집 권한 설정':'설정 보기';collectorAction.dataset.mode=permissionError?'configure':'settings';
     document.querySelector('#kpi-health').textContent=running?'보호 중':starting?'시작 중':'제한됨'; document.querySelector('#kpi-health-note').textContent=running?'Sysmon 실시간 수집 정상':failed?'수집 오류 · 설정 확인':'API 정상 · 수집 준비 중';
   }
   function renderMetrics() {
@@ -225,6 +351,62 @@
     state.incidents.forEach(item=>{const stamp=item.source_events?.[0]?.timestamp?.slice(0,10);const day=days.find(x=>x.key===stamp);if(day)day.count++;}); const maximum=Math.max(1,...days.map(x=>x.count));
     days.forEach(day=>{const col=node('div','trend-col');const bar=node('div','trend-bar');bar.style.height=`${Math.max(3,day.count/maximum*135)}px`;bar.title=`${day.count}건`;col.append(bar,node('span','',day.label));trend.append(col);});
   }
+  const SVG_NS='http://www.w3.org/2000/svg';
+  function svgElement(tag,attributes={}){const element=document.createElementNS(SVG_NS,tag);Object.entries(attributes).forEach(([key,value])=>element.setAttribute(key,String(value)));return element;}
+  function svgText(copy,x,y,className){const text=svgElement('text',{x,y,class:className});text.textContent=copy;return text;}
+  function compactLabel(value,limit=22){const copy=String(value||'알 수 없음');return copy.length>limit?`${copy.slice(0,limit-1)}…`:copy;}
+
+  function buildGraphEntities(item){
+    const entities=[],edges=[],byKey=new Map();
+    const add=(key,type,title,detail,depth,fields={})=>{if(byKey.has(key))return byKey.get(key);const entity={key,type,title:title||'알 수 없음',detail:detail||'',depth,fields};byKey.set(key,entity);entities.push(entity);return entity;};
+    const link=(from,to,label,alert=false)=>{if(from&&to&&!edges.some(edge=>edge.from===from&&edge.to===to&&edge.label===label))edges.push({from,to,label,alert});};
+    const hostName=item.source_events?.[0]?.host_id||'현재 PC';const host=add(`host:${hostName}`,'endpoint',hostName,'보호 대상 호스트',1,{종류:'Endpoint',호스트:hostName});
+    [...(item.source_events||[])].sort((a,b)=>a.timestamp.localeCompare(b.timestamp)).forEach(event=>{
+      const processName=event.process_name||'알 수 없는 프로세스';const processKey=event.process_guid||`${processName}:${event.process_id||''}`;const process=add(`process:${processKey}`,'process',processName,event.command_line||event.image_path||`PID ${event.process_id||'-'}`,3,{종류:'Process',경로:event.image_path||'-',PID:event.process_id||'-',사용자:event.user||'-','명령줄':event.command_line||'-'});
+      link(host,process,'실행',event.event_type==='process_start');
+      if(event.event_type==='process_start'&&event.parent_process){const parent=add(`parent:${event.parent_process_guid||event.parent_process}`,'process',event.parent_process,'부모 프로세스',2,{종류:'Parent process',PID:event.parent_process_id||'-'});link(host,parent,'호스트');link(parent,process,'생성',true);}
+      if(event.event_type==='file_create'){const file=add(`file:${event.file_path}`,'file',event.file_path.split('\\').pop(),event.file_path,4,{종류:'File',경로:event.file_path,생성:event.timestamp});link(process,file,'파일 생성',true);}
+      if(event.event_type==='network_connect'){
+        const inbound=event.initiated===false&&event.source_ip;const remoteIp=inbound?event.source_ip:event.destination_ip;const port=inbound?event.source_port:event.destination_port;const remote=add(`ip:${remoteIp}`,'external',remoteIp,event.destination_hostname||`${event.protocol?.toUpperCase()||'NET'} ${port||''}`,inbound?0:4,{종류:'IP address',주소:remoteIp,방향:inbound?'유입':'외부 연결',포트:port||'-',프로토콜:event.protocol||'unknown'});
+        inbound?link(remote,process,'인바운드',true):link(process,remote,'네트워크',true);
+      }
+    });
+    return {entities,edges};
+  }
+
+  function renderAttackGraph(container,item,{interactive=false,overview=false}={}){
+    container.replaceChildren();if(!item){container.append(node('div','topology-empty','분석할 사건이 없습니다.\n실시간 수집 또는 안전한 데모 사건을 시작하세요.'));return;}
+    const {entities,edges}=buildGraphEntities(item),svg=svgElement('svg',{viewBox:'0 0 900 380',role:'img','aria-label':'사건 엔티티 관계도'}),groups=new Map();
+    entities.forEach(entity=>{if(!groups.has(entity.depth))groups.set(entity.depth,[]);groups.get(entity.depth).push(entity);});
+    groups.forEach((items,depth)=>items.forEach((entity,index)=>{entity.x=28+depth*175;entity.y=(index+1)*(360/(items.length+1))-30;}));
+    const defs=svgElement('defs'),marker=svgElement('marker',{id:`arrow-${overview?'overview':'detail'}`,viewBox:'0 0 10 10',refX:9,refY:5,markerWidth:5,markerHeight:5,orient:'auto-start-reverse'});marker.append(svgElement('path',{d:'M 0 0 L 10 5 L 0 10 z',fill:'#59636e'}));defs.append(marker);svg.append(defs);
+    edges.forEach(edge=>{const startX=edge.from.x+142,startY=edge.from.y+29,endX=edge.to.x,endY=edge.to.y+29,midX=(startX+endX)/2;const path=svgElement('path',{d:`M ${startX} ${startY} C ${midX} ${startY}, ${midX} ${endY}, ${endX} ${endY}`,class:`graph-edge${edge.alert?' alert':''}`,'marker-end':`url(#arrow-${overview?'overview':'detail'})`});svg.append(path,svgText(edge.label,midX-16,(startY+endY)/2-5,'graph-edge-label'));});
+    const colors={external:'#ff6b6b',endpoint:'#64d8cb',process:'#7aa2f7',file:'#e9b949'};
+    entities.forEach(entity=>{const group=svgElement('g',{class:'graph-node',transform:`translate(${entity.x} ${entity.y})`,tabindex:'0',role:'button','aria-label':`${entity.type} ${entity.title}`});group.append(svgElement('rect',{width:142,height:58}),svgElement('circle',{cx:13,cy:14,r:5,fill:colors[entity.type]||'#8f98a2'}),svgText(entity.type.toUpperCase(),24,17,'node-type'),svgText(compactLabel(entity.title,20),12,36,'node-title'),svgText(compactLabel(entity.detail,25),12,50,'node-detail'));const activate=()=>{svg.querySelectorAll('.graph-node').forEach(item=>item.classList.remove('active'));group.classList.add('active');interactive?renderEntityInspector(entity):selectIncident(item);};group.addEventListener('click',activate);group.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();activate();}});svg.append(group);});
+    container.append(svg);if(interactive&&entities.length)renderEntityInspector(entities.find(entity=>entity.type==='external')||entities[0]);
+  }
+
+  function renderEntityInspector(entity){const inspector=document.querySelector('#entity-inspector');if(!inspector||!entity)return;const details=node('div','entity-details');details.append(node('span','entity-kind',entity.type.toUpperCase()),node('h4','',entity.title));Object.entries(entity.fields||{}).forEach(([label,value])=>{const field=node('div','entity-field');field.append(node('span','',label),node('strong','',value));details.append(field);});inspector.replaceChildren(details);}
+
+  function geoForIp(ip){
+    const known={
+      '8.8.8.8':{country:'미국',region:'California · Google DNS',x:68,y:76},
+      '8.8.4.4':{country:'미국',region:'California · Google DNS',x:68,y:76},
+      '1.1.1.1':{country:'Anycast',region:'Cloudflare · 위치 가변',x:95,y:62}
+    };
+    if(known[ip])return known[ip];if(/^(10\.|127\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(ip||''))return {country:'내부망',region:'Private address',x:292,y:70};
+    const first=Number((ip||'0').split('.')[0])||0;return {country:'국가 확인 필요',region:'GeoIP DB 미연동',x:35+(first*7)%255,y:35+(first*11)%95};
+  }
+  function networkContexts(item){return (item?.source_events||[]).filter(event=>event.event_type==='network_connect').map(event=>{const inbound=event.initiated===false&&event.source_ip;const ip=inbound?event.source_ip:event.destination_ip;return {ip,port:inbound?event.source_port:event.destination_port,direction:inbound?'유입':'외부 연결',...geoForIp(ip)};});}
+  function renderGeoMap(mapContainer,listContainer,item){
+    mapContainer.replaceChildren();listContainer.replaceChildren();const contexts=networkContexts(item),svg=svgElement('svg',{viewBox:'0 0 360 180',role:'img','aria-label':'외부 IP 국가 위치 지도'});
+    for(let x=30;x<360;x+=30)svg.append(svgElement('line',{x1:x,y1:0,x2:x,y2:180,class:'map-grid'}));for(let y=30;y<180;y+=30)svg.append(svgElement('line',{x1:0,y1:y,x2:360,y2:y,class:'map-grid'}));
+    ['M22 50 L55 28 91 34 105 55 88 76 67 72 55 102 37 92Z','M116 35 L162 25 196 37 202 57 181 68 166 104 143 128 132 90 105 73Z','M204 32 L248 27 286 38 318 55 307 76 276 72 258 91 230 77 211 59Z','M279 109 L316 105 334 128 319 148 288 145 270 128Z'].forEach(d=>svg.append(svgElement('path',{d,class:'land'})));
+    const home={x:292,y:70};svg.append(svgElement('circle',{cx:home.x,cy:home.y,r:4,class:'map-home'}),svgText('LOCAL',home.x+7,home.y-6,'map-label'));
+    contexts.slice(0,4).forEach(context=>{const midX=(home.x+context.x)/2,controlY=Math.min(home.y,context.y)-35;svg.append(svgElement('path',{d:`M ${home.x} ${home.y} Q ${midX} ${controlY} ${context.x} ${context.y}`,class:'map-arc'}),svgElement('circle',{cx:context.x,cy:context.y,r:4,class:'map-point'}),svgText(context.country,context.x+6,context.y-6,'map-label'));const row=node('div','origin-row');row.append(node('i'),(()=>{const copy=node('div');copy.append(node('strong','',`${context.country} · ${context.direction}`),node('span','',context.region));return copy;})(),node('code','',`${context.ip}:${context.port||'-'}`));listContainer.append(row);});
+    if(!contexts.length){svg.append(svgText('네트워크 이벤트 없음',121,160,'map-label'));const row=node('div','origin-row');row.append(node('i'),(()=>{const copy=node('div');copy.append(node('strong','','아직 외부 연결 증거 없음'),node('span','','Sysmon 네트워크 이벤트 수집 대기'));return copy;})(),node('code','','-'));listContainer.append(row);}mapContainer.append(svg);
+  }
+  function renderOverviewIntel(){const item=state.incidents[0]||null;renderAttackGraph(document.querySelector('#overview-topology'),item,{overview:true});renderGeoMap(document.querySelector('#overview-geo'),document.querySelector('#origin-list'),item);}
   function incidentTable(items, compact=false) {
     if(!items.length){const empty=node('div','empty');const icon=node('div','empty-icon','⌁');const title=node('strong','',state.status?.collector?.state==='running'?'탐지된 사건이 없습니다.':'아직 수집된 사건이 없습니다.');const copy=node('p','',state.status?.collector?.state==='running'?'현재까지 고위험 행위가 발견되지 않았습니다.':'실시간 수집기를 설정하거나 안전한 데모 사건으로 조사 흐름을 먼저 확인하세요.');const button=node('button','primary','안전한 데모 사건 생성');button.dataset.demo='';empty.append(icon,title,copy,button);return empty;}
     const table=node('table');const head=node('thead');const headRow=node('tr');['위험도','사건','판정','주요 증거','발생 시각'].forEach(label=>headRow.append(node('th','',label)));head.append(headRow);const body=node('tbody');
@@ -237,17 +419,31 @@
     const full=document.querySelector('#incident-table');full.replaceChildren(incidentTable(filtered,false)); bindDemoButtons();
   }
   function renderSettings() {
-    if(!state.settings||!state.status)return; const collectorStatus=state.status.collector; const collector=document.querySelector('#collector-settings');const running=collectorStatus.state==='running',permissionError=(collectorStatus.label||'').includes('권한 부족');const userAction=running?'필요 없음 · 자동 수집 중':permissionError?'관리자 PowerShell에서 configure_sysmon_access.ps1 실행':'Sysmon 설치 및 로그 상태 확인';collector.replaceChildren(settingRow('상태',collectorStatus.label||collectorStatus.state),settingRow('수집 소스',(collectorStatus.sources||[]).join(', ')||'연결된 소스 없음'),settingRow('처리 이벤트',`${collectorStatus.processed_events||0}개`),settingRow('마지막 수집',collectorStatus.last_event_at?formatTime(collectorStatus.last_event_at):'아직 없음'),settingRow('사용자 조치',userAction));
+    if(!state.settings||!state.status)return; const collectorStatus=state.status.collector; const collector=document.querySelector('#collector-settings');const running=collectorStatus.state==='running',permissionError=(collectorStatus.label||'').includes('권한 부족');const userAction=running?'필요 없음 · 자동 수집 중':permissionError?'개요 화면의 수집 권한 설정 버튼 사용':'Sysmon 설치 및 로그 상태 확인';collector.replaceChildren(settingRow('상태',collectorStatus.label||collectorStatus.state),settingRow('수집 소스',(collectorStatus.sources||[]).join(', ')||'연결된 소스 없음'),settingRow('처리 이벤트',`${collectorStatus.processed_events||0}개`),settingRow('마지막 수집',collectorStatus.last_event_at?formatTime(collectorStatus.last_event_at):'아직 없음'),settingRow('사용자 조치',userAction));
     const policy=document.querySelector('#policy-settings');policy.replaceChildren(settingRow('탐지 규칙',state.settings.detection_rule_version),settingRow('위험 점수 정책',state.settings.risk_policy_version),settingRow('허용 목록 정책',state.settings.allowlist_policy_version),settingRow('허용 항목',`${state.settings.allowlist_entries.length}개`));
     const model=document.querySelector('#model-settings');model.replaceChildren(settingRow('제공자',state.status.model.provider||'rule_based'),settingRow('상태',state.status.model.available?'사용 가능':'대체 모델 사용'),settingRow('안전 대체','규칙 기반 판정'),settingRow('실제 대응',state.status.active_response?'활성화':'기본 비활성화'));
   }
   function settingRow(label,value){const row=node('div','setting-row');row.append(node('span','',label),node('strong','',value));return row;}
-  function selectIncident(item){state.selected=item;state.tab='summary';navigate('investigation');renderInvestigation();}
+  function selectIncident(item){state.selected=item;state.tab='graph';navigate('investigation');renderInvestigation();}
   function renderInvestigation(){const item=state.selected;if(!item)return;document.querySelector('#investigation-empty').hidden=true;document.querySelector('#investigation-content').hidden=false;const badge=document.querySelector('#investigation-badge');badge.className=`badge ${item.verdict}`;badge.textContent=verdictLabel[item.verdict];document.querySelector('#investigation-title').textContent=incidentTitle(item);document.querySelector('#investigation-id').textContent=item.incident_id;document.querySelector('#investigation-score').textContent=item.risk_score;document.querySelectorAll('[data-tab]').forEach(x=>x.classList.toggle('active',x.dataset.tab===state.tab));renderInvestigationTab(item);renderInvestigationSide(item);}
-  function renderInvestigationTab(item){const body=document.querySelector('#investigation-body');body.replaceChildren();if(state.tab==='summary'){const grid=node('div','detail-grid');[['판정',verdictLabel[item.verdict]],['위험 점수',`${item.risk_score} / 100`],['탐지 규칙',`${item.findings.length}개`],['원본 이벤트',`${item.source_events.length}개`],['공격 흐름',`${item.attack_chains.length}개`],['최종 시각',formatTime(latestTimestamp(item))]].forEach(([a,b])=>{const box=node('div','detail-item');box.append(node('span','',a),node('strong','',b));grid.append(box);});body.append(grid);}else if(state.tab==='evidence'){const list=node('div','evidence-list');item.findings.forEach(f=>{const card=node('div','evidence-card');card.append(node('span',`badge ${f.severity>=70?'suspicious':'needs_review'}`,`${f.source.toUpperCase()} · ${f.rule_id}`),node('p','',findingLabel(f)),node('p','',`원본 이벤트: ${f.event_ids.join(', ')}`));list.append(card);});item.source_events.forEach(e=>{const card=node('div','evidence-card');card.append(node('strong','',`${eventLabel[e.event_type]||e.event_type} · ${e.event_id}`),node('p','',eventSummary(e)));list.append(card);});body.append(list);}else if(state.tab==='attack'){const timeline=node('div','timeline');const events=[...item.source_events].sort((a,b)=>a.timestamp.localeCompare(b.timestamp));events.forEach((event,index)=>{const row=node('div','timeline-item');row.append(node('div','timeline-number',index+1));const copy=node('div');copy.append(node('strong','',eventLabel[event.event_type]||event.event_type),node('div','muted',formatTime(event.timestamp)),node('p','muted',eventSummary(event)));row.append(copy);timeline.append(row);});body.append(timeline);}else{const list=node('div','action-list');(item.recommended_actions||[]).forEach(action=>{const card=node('div','action-item');card.append(node('strong','',actionLabel[action]||action),node('p','',action==='collect_additional_evidence'?'원본 이벤트와 연관 증거를 추가 수집합니다.':'실제 조치 전 대상 재검증과 사용자 승인이 필요합니다.'));list.append(card);});if(!list.children.length)list.append(node('p','muted','현재 권장된 대응이 없습니다.'));body.append(list);}}
-  function renderInvestigationSide(item){const validation=document.querySelector('#validation-list');validation.replaceChildren(healthRow('검증 결과',item.validation.passed?'통과':'확인 필요',item.validation.passed?'green':'amber'),healthRow('재검토 횟수',item.validation.review_count,'blue'),healthRow('검증 오류',item.validation.errors.length,'red'));const sources=[...new Set(item.source_events.map(x=>x.source))];const source=document.querySelector('#source-list');source.replaceChildren(...sources.map(value=>healthRow(value,'연결됨','green')),healthRow('이벤트',item.source_events.length,'blue'));}
+  function renderInvestigationTab(item){
+    const body=document.querySelector('#investigation-body');body.replaceChildren();
+    if(state.tab==='graph'){
+      const toolbar=node('div','graph-toolbar'),copy=node('p','','노드를 선택하면 오른쪽에서 경로·주소·프로세스 정보를 확인할 수 있습니다.'),chips=node('div','graph-chip-row');['IP','호스트','프로세스','파일'].forEach(label=>chips.append(node('span','graph-chip',label)));toolbar.append(copy,chips);const graph=node('div','attack-graph');body.append(toolbar,graph);renderAttackGraph(graph,item,{interactive:true});
+    }else if(state.tab==='summary'){
+      const grid=node('div','detail-grid');[['판정',verdictLabel[item.verdict]],['위험 점수',`${item.risk_score} / 100`],['탐지 규칙',`${item.findings.length}개`],['원본 이벤트',`${item.source_events.length}개`],['공격 흐름',`${item.attack_chains.length}개`],['최종 시각',formatTime(latestTimestamp(item))]].forEach(([a,b])=>{const box=node('div','detail-item');box.append(node('span','',a),node('strong','',b));grid.append(box);});body.append(grid);
+    }else if(state.tab==='evidence'){
+      const list=node('div','evidence-list');item.findings.forEach(f=>{const card=node('div','evidence-card');card.append(node('span',`badge ${f.severity>=70?'suspicious':'needs_review'}`,`${f.source.toUpperCase()} · ${f.rule_id}`),node('p','',findingLabel(f)),node('p','',`원본 이벤트: ${f.event_ids.join(', ')}`));list.append(card);});item.source_events.forEach(e=>{const card=node('div','evidence-card');card.append(node('strong','',`${eventLabel[e.event_type]||e.event_type} · ${e.event_id}`),node('p','',eventSummary(e)));list.append(card);});body.append(list);
+    }else if(state.tab==='attack'){
+      const timeline=node('div','timeline');const events=[...item.source_events].sort((a,b)=>a.timestamp.localeCompare(b.timestamp));events.forEach((event,index)=>{const row=node('div','timeline-item');row.append(node('div','timeline-number',index+1));const eventCopy=node('div');eventCopy.append(node('strong','',eventLabel[event.event_type]||event.event_type),node('div','muted',formatTime(event.timestamp)),node('p','muted',eventSummary(event)));row.append(eventCopy);timeline.append(row);});body.append(timeline);
+    }else{
+      const list=node('div','action-list');(item.recommended_actions||[]).forEach(action=>{const card=node('div','action-item');card.append(node('strong','',actionLabel[action]||action),node('p','',action==='collect_additional_evidence'?'원본 이벤트와 연관 증거를 추가 수집합니다.':'실제 조치 전 대상 재검증과 사용자 승인이 필요합니다.'));list.append(card);});if(!list.children.length)list.append(node('p','muted','현재 권장된 대응이 없습니다.'));body.append(list);
+    }
+  }
+  function renderInvestigationSide(item){const validation=document.querySelector('#validation-list');validation.replaceChildren(healthRow('검증 결과',item.validation.passed?'통과':'확인 필요',item.validation.passed?'green':'amber'),healthRow('재검토 횟수',item.validation.review_count,'blue'),healthRow('검증 오류',item.validation.errors.length,'red'));const sources=[...new Set(item.source_events.map(x=>x.source))];const source=document.querySelector('#source-list');source.replaceChildren(...sources.map(value=>healthRow(value,'연결됨','green')),healthRow('이벤트',item.source_events.length,'blue'));renderGeoMap(document.querySelector('#investigation-geo'),document.querySelector('#investigation-origin'),item);}
   function healthRow(label,value,color){const row=node('div','health-row');const dot=node('i','legend-dot');dot.style.background=`var(--${color})`;row.append(dot,node('span','',label),node('strong','',value));return row;}
   async function createDemo(){try{toast('안전한 데모 사건을 분석하고 있습니다…');const report=await api('/demo/incidents',{method:'POST'});state.incidents=[report,...state.incidents];renderAll();selectIncident(report);toast('데모 사건이 생성되었습니다. 실제 악성 코드는 실행되지 않았습니다.');}catch(error){toast(error.message);}}
+  async function configureCollector(){if(!confirm('Windows 관리자 권한으로 Sysmon 수집 권한을 설정할까요? UAC 확인창이 표시됩니다.'))return;try{await api('/collector/configure',{method:'POST'});toast('Windows UAC 확인창에서 허용을 선택하세요. 설정 후 수집기가 자동으로 다시 연결됩니다.');}catch(error){toast(error.message);}}
   async function streamEvents(){state.streaming=true;const controller=new AbortController();state.streamController=controller;try{const response=await fetch('/events',{headers:authHeaders(),signal:controller.signal});if(!response.ok||!response.body)return;const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='';while(true){const{value,done}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});const messages=buffer.split('\n\n');buffer=messages.pop();messages.forEach(message=>{const line=message.split('\n').find(x=>x.startsWith('data:'));if(!line)return;const item=JSON.parse(line.slice(5));state.incidents=[item,...state.incidents.filter(x=>x.incident_id!==item.incident_id)];renderAll();});}}catch(error){if(error.name!=='AbortError')console.warn('실시간 사건 연결이 종료되었습니다.',error);}finally{if(state.streamController===controller)state.streamController=null;state.streaming=false;}}
   function showAuth(){document.querySelector('#auth-modal').classList.add('open');}
   async function saveToken(value){const token=value.trim();if(token.length<32){toast('API 토큰은 32자 이상이어야 합니다.');return;}try{await establishSession(token);document.querySelector('#auth-modal').classList.remove('open');document.querySelector('#modal-token').value='';document.querySelector('#settings-token').value='';await loadAll();toast('브라우저 보안 세션을 연결했습니다.');}catch(error){toast(error.message);}}
@@ -258,11 +454,12 @@
   function latestTimestamp(item){return item.source_events?.map(x=>x.timestamp).sort().at(-1)||null;}
   function formatTime(value){if(!value)return '-';return new Intl.DateTimeFormat('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}).format(new Date(value));}
   function scoreClass(score){return score>=70?'high':score>=35?'medium':'low';}
-  function eventSummary(event){if(event.event_type==='process_start')return `${event.parent_process||'알 수 없음'} → ${event.process_name} ${event.command_line||''}`;if(event.event_type==='file_create')return `${event.process_name||'프로세스'}가 ${event.file_path} 생성`;if(event.event_type==='network_connect')return `${event.process_name||'프로세스'} → ${event.destination_ip}:${event.destination_port||'-'} (${event.protocol})`;return event.event_id;}
+  function eventSummary(event){if(event.event_type==='process_start')return `${event.parent_process||'알 수 없음'} → ${event.process_name} ${event.command_line||''}`;if(event.event_type==='file_create')return `${event.process_name||'프로세스'}가 ${event.file_path} 생성`;if(event.event_type==='network_connect'){return event.initiated===false&&event.source_ip?`${event.source_ip}:${event.source_port||'-'} → ${event.process_name||'프로세스'} (인바운드 ${event.protocol})`:`${event.process_name||'프로세스'} → ${event.destination_ip}:${event.destination_port||'-'} (${event.protocol})`;}return event.event_id;}
   function bindDemoButtons(){document.querySelectorAll('[data-demo]').forEach(button=>button.onclick=createDemo);}
 
   document.querySelectorAll('[data-nav],[data-go]').forEach(button=>button.onclick=()=>navigate(button.dataset.nav||button.dataset.go));
   document.querySelector('#refresh').onclick=loadAll;document.querySelector('#incident-search').oninput=renderTables;document.querySelector('#verdict-filter').onchange=renderTables;
+  document.querySelector('#collector-action').onclick=()=>document.querySelector('#collector-action').dataset.mode==='configure'?configureCollector():navigate('settings');
   document.querySelector('#investigation-tabs').onclick=event=>{const button=event.target.closest('[data-tab]');if(!button)return;state.tab=button.dataset.tab;renderInvestigation();};
   document.querySelector('#modal-connect').onclick=()=>saveToken(document.querySelector('#modal-token').value);document.querySelector('#save-token').onclick=()=>saveToken(document.querySelector('#settings-token').value);
   document.querySelector('#shutdown').onclick=async()=>{if(!confirm('WeaveXDR 서버를 종료할까요? 브라우저 탭도 더 이상 데이터를 불러올 수 없습니다.'))return;try{clearInterval(state.statusTimer);state.statusTimer=null;state.streamController?.abort();await api('/shutdown',{method:'POST'});setConnected(false);toast('WeaveXDR를 종료했습니다. 이 탭을 닫아도 됩니다.');setTimeout(()=>document.body.replaceChildren(node('div','empty','WeaveXDR가 종료되었습니다. 이 창을 닫아 주세요.')),700);}catch(error){if(!state.statusTimer)state.statusTimer=setInterval(refreshStatus,3000);toast(error.message);}};

@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import secrets
 import socket
+import sys
 import threading
 import time
 import webbrowser
@@ -20,6 +21,35 @@ from xdr_graph.response import ApprovalService, DryRunResponseService
 from xdr_graph.risk_policy import load_default_risk_policy
 from xdr_graph.storage import PersistentIngestionService, SQLiteEventStore
 from xdr_graph.sysmon_collector import SysmonCollector
+
+
+def request_collector_access_setup() -> None:
+    """번들된 설정 스크립트를 Windows UAC 승인 흐름으로 실행한다."""
+
+    if os.name != "nt":
+        raise RuntimeError("collector access setup is only available on Windows")
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        script_path = Path(sys._MEIPASS) / "xdr_graph" / "tools" / "configure_sysmon_access.ps1"
+    else:
+        script_path = Path(__file__).parents[2] / "scripts" / "configure_sysmon_access.ps1"
+    if not script_path.is_file():
+        raise FileNotFoundError(f"collector setup script was not found: {script_path}")
+
+    # ShellExecute의 runas 동사는 Windows가 신뢰 경계인 UAC 확인창을 직접
+    # 표시하게 한다. API 토큰이나 사용자 입력을 명령행에 넣지 않는다.
+    import ctypes
+
+    arguments = f'-NoProfile -ExecutionPolicy Bypass -File "{script_path}"'
+    result = ctypes.windll.shell32.ShellExecuteW(
+        None,
+        "runas",
+        "powershell.exe",
+        arguments,
+        str(script_path.parent),
+        1,
+    )
+    if result <= 32:
+        raise RuntimeError(f"Windows refused collector setup elevation: {result}")
 
 
 def build_embedded_server(app, *, port: int) -> uvicorn.Server:
@@ -101,6 +131,7 @@ def main() -> None:
     logger.info("desktop runtime started")
     server = build_embedded_server(app, port=8765)
     runtime.shutdown_callback = lambda: setattr(server, "should_exit", True)
+    runtime.collector_setup_callback = request_collector_access_setup
     ingestion_service = PersistentIngestionService(
         store,
         event_publisher=runtime.event_broker,
