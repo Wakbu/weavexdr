@@ -128,5 +128,27 @@ class OllamaModelManager:
             if not answer:
                 raise RuntimeError("local model returned an empty answer")
         except Exception as exc:
-            raise RuntimeError(f"local assistant request failed: {exc}") from exc
+            # Ollama가 모델 적재 중이거나 종료 직전 연결을 먼저 닫더라도 대화 UI를
+            # 503으로 끝내지 않는다. 원본 문맥은 외부로 보내지 않고 최소 사건 수와
+            # 규칙 판정만 이용한 읽기 전용 안내로 즉시 강등한다.
+            try:
+                incidents = json.loads(context)
+            except json.JSONDecodeError:
+                incidents = []
+            high_risk = sum(1 for item in incidents if item.get("verdict") == "suspicious")
+            answer = (
+                "로컬 AI 모델 응답이 일시적으로 중단되어 규칙 기반 안내로 전환했습니다. "
+                f"현재 문맥에는 최근 사건 {len(incidents)}건, 고위험 사건 {high_risk}건이 있습니다. "
+                "사건 화면에서 위험 점수가 높은 항목의 탐지 근거와 연결된 프로세스·파일·네트워크 순서로 확인하세요. "
+                "모델 상태는 AI 모델 화면에서 다시 확인할 수 있습니다."
+            )
+            return {
+                "answer": answer,
+                "provider": "rules",
+                "model": self.selected_model,
+                "degraded": True,
+                "degraded_reason": type(exc).__name__,
+                "latency_ms": round((time.perf_counter() - started_at) * 1000, 2),
+                "latency_budget_ms": budget_ms,
+            }
         return {"answer": answer[:8_000], "provider": "ollama", "model": self.selected_model, "latency_ms": round((time.perf_counter() - started_at) * 1000, 2), "latency_budget_ms": budget_ms}

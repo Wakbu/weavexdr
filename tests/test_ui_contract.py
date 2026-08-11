@@ -24,6 +24,7 @@ def test_sidebar_home_and_function_pages_are_explicitly_separated():
     assert 'id="brand-home"' in html and "navigate('overview')" in html
     assert 'aria-expanded="true"' in html and ".sidebar-toggle::before" in html
     assert "button.setAttribute('aria-expanded',String(!collapsed))" in html
+    assert ".sidebar-toggle { position:absolute; inset:0 -6px 0 auto" in html
     assert ".shell.sidebar-collapsed .nav button { width:44px" in html
     for page in ("operations", "models", "content", "settings"):
         assert f'id="page-{page}"' in html and f'data-nav="{page}"' in html
@@ -38,4 +39,12 @@ def test_investigation_model_content_and_assistant_ux_contracts():
     assert 'id="model-recommendation"' in html and 'id="model-catalog"' in html
     assert 'id="sigma-example"' in html and "loadSigmaExample" in html
     assert 'id="assistant-launcher"' in html and 'id="assistant-panel"' in html
+    assert 'class="assistant-pet"' in html and 'class="assistant-ear left"' in html
     assert "'/assistant/chat'" in html
+    assert '<body class="booting">' in html and 'id="startup-overlay"' in html
+    assert "result.degraded?'concerned':'happy'" in html
+    assert "assistant-ponder" in html and "assistant-thought" in html
+    assert "bindAssistantDrag" in html and "weavexdr-assistant-position" in html
+    assert "if(error instanceof TypeError||/failed to fetch/i.test(error.message))accepted=true" in html
+    assert html.index('id="system-notices"') > html.index('id="page-overview"')
+    assert "paused:'수집 일시정지'" in html and ".connection.paused" in html

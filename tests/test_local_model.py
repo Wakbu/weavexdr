@@ -53,3 +53,18 @@ def test_local_assistant_keeps_rule_based_guidance_when_model_is_unavailable(tmp
     answer = OllamaModelManager(tmp_path / "models.json").chat("상태 알려줘", "[]")
     assert answer["provider"] == "rules"
     assert "규칙 엔진" in answer["answer"]
+
+
+def test_local_assistant_degrades_to_rules_when_installed_model_request_breaks(tmp_path, monkeypatch):
+    def flaky_urlopen(request, timeout):
+        if request.full_url.endswith("/api/tags"):
+            return Response({"models": [{"name": "qwen3:4b"}]})
+        raise TimeoutError("model load timed out")
+
+    monkeypatch.setattr("xdr_graph.local_model.urlopen", flaky_urlopen)
+    manager = OllamaModelManager(tmp_path / "models.json")
+    manager.select("qwen3:4b")
+    answer = manager.chat("최근 사건 요약", '[{"verdict":"suspicious"}]')
+    assert answer["provider"] == "rules"
+    assert answer["degraded"] is True
+    assert "고위험 사건 1건" in answer["answer"]
