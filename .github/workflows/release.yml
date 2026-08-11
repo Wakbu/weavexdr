@@ -20,6 +20,8 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: python -m venv .venv
+      # 새 가상환경의 번들 pip도 공급망 감사 대상이므로 프로젝트 설치 전에 고정 하한으로 갱신한다.
+      - run: .\.venv\Scripts\python.exe -m pip install "pip>=26.1.2"
       - run: .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
       - run: .\.venv\Scripts\python.exe -m pip install pip-audit
       - run: .\.venv\Scripts\python.exe -m pip_audit

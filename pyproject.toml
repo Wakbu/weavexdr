@@ -16,7 +16,7 @@ dependencies = [
     "pywin32>=311; sys_platform == 'win32'",
     "pyyaml>=6,<7",
     "reportlab>=4.2,<5",
-    "cryptography>=44,<47",
+    "cryptography>=50,<51",
 ]
 
 [project.optional-dependencies]

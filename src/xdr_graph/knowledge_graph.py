@@ -4,7 +4,7 @@ import hashlib
 import json
 import sqlite3
 from collections import deque
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from ipaddress import ip_address
 from pathlib import Path
 from typing import Literal
@@ -87,6 +87,25 @@ class KnowledgeGraphAssessment(BaseModel):
     reason: str
 
 
+class MemoryRetentionPolicy(BaseModel):
+    """Bound long-term graph memory by verdict and explicitly retained entities."""
+
+    benign_days: int = Field(default=30, ge=1)
+    needs_review_days: int = Field(default=90, ge=1)
+    suspicious_days: int = Field(default=180, ge=1)
+    remembered_entity_types: tuple[EntityType, ...] = ("Host", "User", "Process", "File", "IP", "Alert")
+    excluded_properties: tuple[str, ...] = ("command_line", "file_content", "credential", "token")
+
+    def retention_days(self, verdict: str) -> int:
+        return {"benign": self.benign_days, "needs_review": self.needs_review_days, "suspicious": self.suspicious_days}.get(verdict, self.needs_review_days)
+
+
+class MemoryPurgeResult(BaseModel):
+    removed_incidents: int
+    removed_by_verdict: dict[str, int]
+    remaining_incidents: int
+
+
 class KnowledgeGraphStore:
     """개인용 XDR 규모에 맞춘 SQLite 속성 그래프 저장소.
 
@@ -100,6 +119,9 @@ class KnowledgeGraphStore:
         self.connection.row_factory = sqlite3.Row
         self.privacy_salt = privacy_salt
         self._create_schema()
+        # 장기 기억은 저장소를 열 때 기본 정책으로 자동 만료한다. 사용 중인
+        # 사건을 즉시 삭제하지 않고 판정별 30/90/180일 경계를 적용한다.
+        self.purge_expired_memory()
 
     def _create_schema(self) -> None:
         self.connection.executescript(
@@ -127,19 +149,24 @@ class KnowledgeGraphStore:
             );
             CREATE TABLE IF NOT EXISTS graph_incidents (
                 incident_id TEXT PRIMARY KEY,
-                observed_at TEXT NOT NULL
+                observed_at TEXT NOT NULL,
+                verdict TEXT NOT NULL DEFAULT 'needs_review'
             );
             CREATE INDEX IF NOT EXISTS ix_graph_edges_incident ON graph_edges(incident_id);
             CREATE INDEX IF NOT EXISTS ix_graph_incident_entity ON graph_incident_entities(entity_id);
             """
         )
+        columns = {row["name"] for row in self.connection.execute("PRAGMA table_info(graph_incidents)")}
+        if "verdict" not in columns:
+            # 기존 로컬 그래프는 안전하게 중간 보존 기간을 적용한 뒤 새 사건부터 실제 판정을 기록한다.
+            self.connection.execute("ALTER TABLE graph_incidents ADD COLUMN verdict TEXT NOT NULL DEFAULT 'needs_review'")
         self.connection.commit()
 
     def ingest_report(self, report: IncidentReport) -> None:
         observed_at = datetime.now(UTC).isoformat()
         self.connection.execute(
-            "INSERT OR REPLACE INTO graph_incidents(incident_id, observed_at) VALUES (?, ?)",
-            (report.incident_id, observed_at),
+            "INSERT OR REPLACE INTO graph_incidents(incident_id, observed_at, verdict) VALUES (?, ?, ?)",
+            (report.incident_id, observed_at, report.verdict),
         )
         alert = self._entity("Alert", report.incident_id, {"verdict": report.verdict, "risk_score": report.risk_score})
         self._upsert_node(alert, observed_at, report.incident_id)
@@ -293,6 +320,30 @@ class KnowledgeGraphStore:
         )
         self.connection.commit()
         return len(incident_ids)
+
+    def purge_expired_memory(self, *, now: datetime | None = None, policy: MemoryRetentionPolicy | None = None) -> MemoryPurgeResult:
+        current = now or datetime.now(UTC)
+        if current.tzinfo is None or current.utcoffset() is None:
+            raise ValueError("now must include a timezone offset")
+        retention = policy or MemoryRetentionPolicy()
+        rows = self.connection.execute("SELECT incident_id, observed_at, verdict FROM graph_incidents").fetchall()
+        expired: list[sqlite3.Row] = []
+        for row in rows:
+            observed_at = datetime.fromisoformat(row["observed_at"])
+            if observed_at < current.astimezone(UTC) - timedelta(days=retention.retention_days(row["verdict"])):
+                expired.append(row)
+        removed_by_verdict: dict[str, int] = {}
+        for row in expired:
+            incident_id, verdict = row["incident_id"], row["verdict"]
+            removed_by_verdict[verdict] = removed_by_verdict.get(verdict, 0) + 1
+            self.connection.execute("DELETE FROM graph_edges WHERE incident_id = ?", (incident_id,))
+            self.connection.execute("DELETE FROM graph_incident_entities WHERE incident_id = ?", (incident_id,))
+            self.connection.execute("DELETE FROM graph_incidents WHERE incident_id = ?", (incident_id,))
+        # 공유 엔티티는 남기고 만료 사건에서만 쓰인 고아 노드만 함께 정리한다.
+        self.connection.execute("DELETE FROM graph_nodes WHERE entity_id NOT IN (SELECT entity_id FROM graph_incident_entities)")
+        self.connection.commit()
+        remaining = self.connection.execute("SELECT COUNT(*) FROM graph_incidents").fetchone()[0]
+        return MemoryPurgeResult(removed_incidents=len(expired), removed_by_verdict=removed_by_verdict, remaining_incidents=remaining)
 
     def _process_entity(self, event) -> GraphEntity | None:
         process_name = getattr(event, "process_name", None)

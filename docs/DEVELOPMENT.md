@@ -49,3 +49,14 @@ Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue
 python scripts/run_soak_test.py --duration-seconds 60
 python scripts/run_soak_test.py --duration-seconds 86400
 ```
+
+## 로컬 모델 회귀 평가
+
+동일한 평가 데이터로 모델별 정확도·오탐·미탐·P95 지연을 저장하고 다음 후보를 기준 결과와 비교한다.
+
+```powershell
+python -m xdr_graph.benchmark evaluations/baseline_cases.json --model qwen3:4b --output build/model-qwen3-4b.json
+python -m xdr_graph.benchmark evaluations/baseline_cases.json --model qwen3:8b --baseline build/model-qwen3-4b.json --output build/model-qwen3-8b.json
+```
+
+그래프 검색 실험은 키워드 검색과 공유 엔티티 검색의 recall·평균 지연을 함께 기록한다. 생성형 GraphRAG는 그래프 검색이 정확도를 높이고 로컬 지연 한도를 통과한 경우에만 후보로 취급한다. 장기 그래프 기억은 저장소를 열 때 판정별 기본 보존 기간(정상 30일, 검토 90일, 고위험 180일)을 적용한다.
