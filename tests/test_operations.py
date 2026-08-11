@@ -90,6 +90,9 @@ def test_windows_service_name_and_installer_scripts_are_valid_powershell():
         "configure_sysmon_access.ps1",
     ):
         script_path = PROJECT_ROOT / "scripts" / script_name
+        # Windows PowerShell 5는 BOM 없는 UTF-8 한글을 ANSI로 오해하므로
+        # 공개 저장소와 ZIP 안에서도 BOM을 유지해야 한다.
+        assert script_path.read_bytes().startswith(b"\xef\xbb\xbf")
         command = (
             "$tokens=$null; $errors=$null; "
             f"[System.Management.Automation.Language.Parser]::ParseFile('{script_path}', [ref]$tokens, [ref]$errors) | Out-Null; "

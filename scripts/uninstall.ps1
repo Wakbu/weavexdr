@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$InstallRoot = "$env:ProgramFiles\WeaveXDR",
     [switch]$RemoveData
 )

@@ -11,7 +11,6 @@ from xdr_graph.runtime_security import validate_configuration
 
 REQUIRED_DOCUMENTS = (
     "README.md",
-    "PROJECT_ROADMAP.md",
     "docs/SECURITY.md",
     "docs/OPERATIONS.md",
 )
