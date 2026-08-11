@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import sqlite3
+import json
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import RLock
-from typing import Callable, Iterable
+from typing import Callable, Iterable, Literal
 
 from pydantic import TypeAdapter
 
@@ -39,6 +40,16 @@ class StorageStats:
     events: int
     batches: int
     incidents: int
+
+
+@dataclass(frozen=True)
+class BufferStatus:
+    queued_events: int
+    capacity: int
+    pressure_ratio: float
+    state: str
+    dropped_events: int = 0
+    sampled_batches: int = 0
 
 
 class SQLiteEventStore:
@@ -90,6 +101,8 @@ class SQLiteEventStore:
                 );
                 CREATE INDEX IF NOT EXISTS idx_events_incident_time
                     ON events (incident_id, event_time);
+                CREATE INDEX IF NOT EXISTS idx_events_type_host_time
+                    ON events (event_type, host_id, event_time);
 
                 CREATE TABLE IF NOT EXISTS batches (
                     batch_id TEXT PRIMARY KEY,
@@ -111,6 +124,42 @@ class SQLiteEventStore:
                     risk_score INTEGER NOT NULL,
                     report_json TEXT NOT NULL,
                     updated_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_incidents_verdict_risk_time
+                    ON incidents (verdict, risk_score DESC, updated_at DESC);
+                CREATE TABLE IF NOT EXISTS storage_metadata (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                );
+                INSERT OR IGNORE INTO storage_metadata(key,value) VALUES('schema_version','1');
+                CREATE TABLE IF NOT EXISTS incident_management (
+                    incident_id TEXT PRIMARY KEY REFERENCES incidents(incident_id) ON DELETE CASCADE,
+                    status TEXT NOT NULL DEFAULT 'new',
+                    note TEXT NOT NULL DEFAULT '',
+                    tags_json TEXT NOT NULL DEFAULT '[]',
+                    bookmarked INTEGER NOT NULL DEFAULT 0,
+                    checklist_json TEXT NOT NULL DEFAULT '[]',
+                    custom_title TEXT,
+                    close_reason TEXT,
+                    is_demo INTEGER NOT NULL DEFAULT 0,
+                    archived_at TEXT,
+                    graph_config_json TEXT NOT NULL DEFAULT '{}',
+                    updated_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_incident_management_status
+                    ON incident_management (status, bookmarked, updated_at);
+                CREATE TABLE IF NOT EXISTS saved_searches (
+                    search_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL UNIQUE,
+                    filters_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS incident_feedback_candidates (
+                    incident_id TEXT PRIMARY KEY REFERENCES incidents(incident_id) ON DELETE CASCADE,
+                    label TEXT NOT NULL,
+                    reason TEXT NOT NULL,
+                    rule_ids_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
                 );
                 """
             )
@@ -150,6 +199,160 @@ class SQLiteEventStore:
                 (incident_id,),
             ).fetchone()
         return IncidentReport.model_validate_json(row["report_json"]) if row else None
+
+    @staticmethod
+    def _default_management(incident_id: str) -> dict[str, object]:
+        return {
+            "status": "new",
+            "note": "",
+            "tags": [],
+            "bookmarked": False,
+            "checklist": [],
+            "custom_title": None,
+            "close_reason": None,
+            "is_demo": incident_id.startswith("demo-incident-"),
+            "archived_at": None,
+            "graph_config": {},
+        }
+
+    @classmethod
+    def _management_from_row(cls, incident_id: str, row: sqlite3.Row | None) -> dict[str, object]:
+        if row is None or row["management_status"] is None:
+            return cls._default_management(incident_id)
+        return {
+            "status": row["management_status"],
+            "note": row["management_note"],
+            "tags": json.loads(row["management_tags"]),
+            "bookmarked": bool(row["management_bookmarked"]),
+            "checklist": json.loads(row["management_checklist"]),
+            "custom_title": row["management_title"],
+            "close_reason": row["management_close_reason"],
+            "is_demo": bool(row["management_is_demo"]),
+            "archived_at": row["management_archived_at"],
+            "graph_config": json.loads(row["management_graph_config"] or "{}"),
+        }
+
+    def load_incident_view(self, incident_id: str) -> dict[str, object] | None:
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT i.report_json,
+                    m.status AS management_status, m.note AS management_note,
+                    m.tags_json AS management_tags, m.bookmarked AS management_bookmarked,
+                    m.checklist_json AS management_checklist, m.custom_title AS management_title,
+                    m.close_reason AS management_close_reason, m.is_demo AS management_is_demo,
+                    m.archived_at AS management_archived_at, m.graph_config_json AS management_graph_config
+                FROM incidents i LEFT JOIN incident_management m USING (incident_id)
+                WHERE i.incident_id = ?
+                """,
+                (incident_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        report = json.loads(row["report_json"])
+        report["management"] = self._management_from_row(incident_id, row)
+        return report
+
+    def update_incident_management(self, incident_id: str, changes: dict[str, object]) -> dict[str, object]:
+        allowed = {"status", "note", "tags", "bookmarked", "checklist", "custom_title", "close_reason", "archived_at", "graph_config"}
+        if unknown := set(changes) - allowed:
+            raise ValueError(f"unsupported incident fields: {sorted(unknown)}")
+        current = self.load_incident_view(incident_id)
+        if current is None:
+            raise KeyError(incident_id)
+        management = dict(current["management"])
+        management.update(changes)
+        if management["status"] not in {"new", "investigating", "on_hold", "resolved", "false_positive"}:
+            raise ValueError("invalid incident status")
+        tags = [str(value).strip() for value in management["tags"] if str(value).strip()][:20]
+        checklist = [str(value).strip() for value in management["checklist"] if str(value).strip()][:30]
+        now = self._utc_now().isoformat()
+        with self._lock, self._connection:
+            self._connection.execute(
+                """
+                INSERT INTO incident_management (
+                    incident_id, status, note, tags_json, bookmarked, checklist_json,
+                    custom_title, close_reason, is_demo, archived_at, graph_config_json, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(incident_id) DO UPDATE SET
+                    status=excluded.status, note=excluded.note, tags_json=excluded.tags_json,
+                    bookmarked=excluded.bookmarked, checklist_json=excluded.checklist_json,
+                    custom_title=excluded.custom_title, close_reason=excluded.close_reason,
+                    archived_at=excluded.archived_at, graph_config_json=excluded.graph_config_json,
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    incident_id, management["status"], str(management["note"])[:10000],
+                    json.dumps(tags, ensure_ascii=False), int(bool(management["bookmarked"])),
+                    json.dumps(checklist, ensure_ascii=False), management["custom_title"],
+                    management["close_reason"], int(bool(management["is_demo"])),
+                    management["archived_at"], json.dumps(management["graph_config"], ensure_ascii=False), now,
+                ),
+            )
+            if management["status"] == "false_positive" and management["close_reason"]:
+                # 오탐 한 건으로 규칙을 바로 끄지 않고 기존 검토 절차에 넘길 후보로만 남긴다.
+                rule_ids = [finding["rule_id"] for finding in current.get("findings", [])]
+                self._connection.execute(
+                    """
+                    INSERT INTO incident_feedback_candidates(incident_id,label,reason,rule_ids_json,created_at)
+                    VALUES (?, 'false_positive', ?, ?, ?)
+                    ON CONFLICT(incident_id) DO UPDATE SET reason=excluded.reason,
+                        rule_ids_json=excluded.rule_ids_json, created_at=excluded.created_at
+                    """,
+                    (incident_id, management["close_reason"], json.dumps(rule_ids), now),
+                )
+        updated = self.load_incident_view(incident_id)
+        assert updated is not None
+        return updated
+
+    def delete_demo_incidents(self) -> int:
+        with self._lock, self._connection:
+            ids = [row[0] for row in self._connection.execute(
+                "SELECT incident_id FROM incidents WHERE incident_id LIKE 'demo-incident-%'"
+            ).fetchall()]
+            if not ids:
+                return 0
+            placeholders = ",".join("?" for _ in ids)
+            self._connection.execute(f"DELETE FROM events WHERE incident_id IN ({placeholders})", ids)
+            self._connection.execute(f"DELETE FROM batches WHERE incident_id IN ({placeholders})", ids)
+            self._connection.execute(f"DELETE FROM incidents WHERE incident_id IN ({placeholders})", ids)
+        return len(ids)
+
+    def delete_incident(self, incident_id: str) -> bool:
+        with self._lock, self._connection:
+            self._connection.execute("DELETE FROM events WHERE incident_id = ?", (incident_id,))
+            self._connection.execute("DELETE FROM batches WHERE incident_id = ?", (incident_id,))
+            cursor = self._connection.execute("DELETE FROM incidents WHERE incident_id = ?", (incident_id,))
+        return cursor.rowcount > 0
+
+    def save_search(self, name: str, filters: dict[str, object]) -> dict[str, object]:
+        now = self._utc_now().isoformat()
+        with self._lock, self._connection:
+            self._connection.execute(
+                "INSERT INTO saved_searches(name, filters_json, created_at) VALUES (?, ?, ?) "
+                "ON CONFLICT(name) DO UPDATE SET filters_json=excluded.filters_json",
+                (name.strip(), json.dumps(filters, ensure_ascii=False), now),
+            )
+        return {"name": name.strip(), "filters": filters}
+
+    def list_saved_searches(self) -> list[dict[str, object]]:
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT search_id, name, filters_json FROM saved_searches ORDER BY name"
+            ).fetchall()
+        return [{"search_id": row["search_id"], "name": row["name"], "filters": json.loads(row["filters_json"])} for row in rows]
+
+    def delete_saved_search(self, search_id: int) -> bool:
+        with self._lock, self._connection:
+            cursor = self._connection.execute("DELETE FROM saved_searches WHERE search_id = ?", (search_id,))
+        return cursor.rowcount > 0
+
+    def list_feedback_candidates(self) -> list[dict[str, object]]:
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT incident_id,label,reason,rule_ids_json,created_at FROM incident_feedback_candidates ORDER BY created_at DESC"
+            ).fetchall()
+        return [{**dict(row), "rule_ids": json.loads(row["rule_ids_json"])} for row in rows]
 
     @staticmethod
     def _incident_filter_clause(
@@ -194,6 +397,81 @@ class SQLiteEventStore:
             ).fetchall()
         return [IncidentReport.model_validate_json(row["report_json"]) for row in rows]
 
+    def list_incident_views(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+        verdict: str | None = None,
+        query: str | None = None,
+        status: str | None = None,
+        min_risk: int | None = None,
+        date_from: str | None = None,
+        date_to: str | None = None,
+        entity: str | None = None,
+        sort: str = "updated_desc",
+    ) -> list[dict[str, object]]:
+        """Server-side filtering keeps the dashboard bounded for large incident stores."""
+        if limit < 1 or limit > 500 or offset < 0:
+            raise ValueError("invalid incident pagination")
+        if verdict not in (None, "suspicious", "needs_review", "benign"):
+            raise ValueError("invalid incident verdict filter")
+        if status not in (None, "new", "investigating", "on_hold", "resolved", "false_positive"):
+            raise ValueError("invalid incident status filter")
+        if min_risk is not None and not 0 <= min_risk <= 100:
+            raise ValueError("invalid minimum risk")
+        order_by = {
+            "updated_desc": "i.updated_at DESC, i.incident_id",
+            "updated_asc": "i.updated_at ASC, i.incident_id",
+            "risk_desc": "i.risk_score DESC, i.updated_at DESC",
+            "risk_asc": "i.risk_score ASC, i.updated_at DESC",
+        }.get(sort)
+        if order_by is None:
+            raise ValueError("invalid incident sort")
+        clauses: list[str] = []
+        parameters: list[object] = []
+        if verdict:
+            clauses.append("i.verdict = ?")
+            parameters.append(verdict)
+        if status:
+            clauses.append("COALESCE(m.status, 'new') = ?")
+            parameters.append(status)
+        if min_risk is not None:
+            clauses.append("i.risk_score >= ?")
+            parameters.append(min_risk)
+        if date_from:
+            clauses.append("i.updated_at >= ?")
+            parameters.append(date_from)
+        if date_to:
+            clauses.append("i.updated_at <= ?")
+            parameters.append(date_to)
+        for search_value in (query, entity):
+            if search_value and search_value.strip():
+                clauses.append("(i.incident_id LIKE ? OR i.report_json LIKE ? OR COALESCE(m.tags_json, '') LIKE ? OR COALESCE(m.custom_title, '') LIKE ?)")
+                pattern = f"%{search_value.strip()}%"
+                parameters.extend((pattern, pattern, pattern, pattern))
+        where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        with self._lock:
+            rows = self._connection.execute(
+                f"""
+                SELECT i.incident_id, i.report_json,
+                    m.status AS management_status, m.note AS management_note,
+                    m.tags_json AS management_tags, m.bookmarked AS management_bookmarked,
+                    m.checklist_json AS management_checklist, m.custom_title AS management_title,
+                    m.close_reason AS management_close_reason, m.is_demo AS management_is_demo,
+                    m.archived_at AS management_archived_at, m.graph_config_json AS management_graph_config
+                FROM incidents i LEFT JOIN incident_management m USING (incident_id)
+                {where_sql} ORDER BY {order_by} LIMIT ? OFFSET ?
+                """,
+                (*parameters, limit, offset),
+            ).fetchall()
+        views: list[dict[str, object]] = []
+        for row in rows:
+            report = json.loads(row["report_json"])
+            report["management"] = self._management_from_row(row["incident_id"], row)
+            views.append(report)
+        return views
+
     def incident_stats(
         self, *, verdict: str | None = None, query: str | None = None
     ) -> dict[str, object]:
@@ -226,6 +504,37 @@ class SQLiteEventStore:
             "verdicts": verdict_counts,
             "daily": {row["day"]: row["count"] for row in trend_rows},
         }
+
+    def filtered_incident_count(
+        self, *, verdict: str | None = None, query: str | None = None,
+        status: str | None = None, min_risk: int | None = None,
+        date_from: str | None = None, date_to: str | None = None,
+        entity: str | None = None,
+    ) -> int:
+        clauses: list[str] = []
+        parameters: list[object] = []
+        if verdict:
+            if verdict not in {"suspicious", "needs_review", "benign"}:
+                raise ValueError("invalid incident verdict filter")
+            clauses.append("i.verdict = ?");parameters.append(verdict)
+        if status:
+            if status not in {"new", "investigating", "on_hold", "resolved", "false_positive"}:
+                raise ValueError("invalid incident status filter")
+            clauses.append("COALESCE(m.status, 'new') = ?");parameters.append(status)
+        if min_risk is not None:
+            if not 0 <= min_risk <= 100: raise ValueError("invalid minimum risk")
+            clauses.append("i.risk_score >= ?");parameters.append(min_risk)
+        if date_from: clauses.append("i.updated_at >= ?");parameters.append(date_from)
+        if date_to: clauses.append("i.updated_at <= ?");parameters.append(date_to)
+        for value in (query, entity):
+            if value and value.strip():
+                clauses.append("(i.incident_id LIKE ? OR i.report_json LIKE ? OR COALESCE(m.tags_json, '') LIKE ? OR COALESCE(m.custom_title, '') LIKE ?)")
+                pattern=f"%{value.strip()}%";parameters.extend((pattern,pattern,pattern,pattern))
+        where_sql=f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        with self._lock:
+            return int(self._connection.execute(
+                f"SELECT COUNT(*) FROM incidents i LEFT JOIN incident_management m USING (incident_id) {where_sql}", parameters
+            ).fetchone()[0])
 
     def save_processed_batch(
         self,
@@ -306,6 +615,21 @@ class SQLiteEventStore:
                 ),
             )
 
+    def save_manual_incident(self, report: IncidentReport) -> None:
+        """Persist a user merge/split result without fabricating raw batch records."""
+        now = self._utc_now().isoformat()
+        with self._lock, self._connection:
+            self._connection.execute(
+                """
+                INSERT INTO incidents(incident_id,last_batch_id,verdict,risk_score,report_json,updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(incident_id) DO UPDATE SET verdict=excluded.verdict,
+                    risk_score=excluded.risk_score, report_json=excluded.report_json,
+                    updated_at=excluded.updated_at
+                """,
+                (report.incident_id, "manual-management", report.verdict, report.risk_score, report.model_dump_json(), now),
+            )
+
     def cleanup_expired(self, *, now: datetime | None = None) -> CleanupResult:
         """마지막 처리 시각이 보존 기간보다 오래된 데이터를 정리한다."""
 
@@ -315,6 +639,16 @@ class SQLiteEventStore:
         cutoff = (reference_time.astimezone(timezone.utc) - timedelta(days=self.retention_days)).isoformat()
 
         with self._lock, self._connection:
+            # 사용자가 해결·오탐으로 닫은 사건은 보존 기간이 되었다고
+            # 바로 영구 삭제하지 않고 자동 보관한다. 영구 삭제는 별도 ID 확인을 요구한다.
+            self._connection.execute(
+                """
+                UPDATE incident_management SET archived_at = COALESCE(archived_at, ?)
+                WHERE status IN ('resolved', 'false_positive')
+                  AND incident_id IN (SELECT incident_id FROM incidents WHERE updated_at < ?)
+                """,
+                (reference_time.astimezone(timezone.utc).isoformat(), cutoff),
+            )
             event_cursor = self._connection.execute(
                 "DELETE FROM events WHERE inserted_at < ?", (cutoff,)
             )
@@ -322,7 +656,13 @@ class SQLiteEventStore:
                 "DELETE FROM batches WHERE processed_at < ?", (cutoff,)
             )
             incident_cursor = self._connection.execute(
-                "DELETE FROM incidents WHERE updated_at < ?", (cutoff,)
+                """
+                DELETE FROM incidents WHERE updated_at < ?
+                  AND incident_id NOT IN (
+                    SELECT incident_id FROM incident_management WHERE archived_at IS NOT NULL
+                  )
+                """,
+                (cutoff,),
             )
         return CleanupResult(
             events=event_cursor.rowcount,
@@ -433,13 +773,24 @@ class BufferFullError(RuntimeError):
 class EventBuffer:
     """이벤트 수를 기준으로 용량을 제한하는 메모리 배치 큐다."""
 
-    def __init__(self, sink: EventBatchSink, *, capacity: int = 1000) -> None:
+    SAMPLEABLE_EVENT_TYPES = {"dns_query", "firewall_connection"}
+
+    def __init__(
+        self,
+        sink: EventBatchSink,
+        *,
+        capacity: int = 1000,
+        overflow_policy: Literal["reject", "sample_low_priority"] = "reject",
+    ) -> None:
         if capacity < 1:
             raise ValueError("capacity must be at least 1")
         self.sink = sink
         self.capacity = capacity
+        self.overflow_policy = overflow_policy
         self._queued_events = 0
         self._batches: deque[NormalizedEventBatch] = deque()
+        self._dropped_events = 0
+        self._sampled_batches = 0
 
     @property
     def queued_event_count(self) -> int:
@@ -449,9 +800,28 @@ class EventBuffer:
     def queued_batch_count(self) -> int:
         return len(self._batches)
 
+    def status(self) -> BufferStatus:
+        ratio = self._queued_events / self.capacity
+        state = "critical" if ratio >= .9 else "high" if ratio >= .7 else "normal"
+        return BufferStatus(
+            queued_events=self._queued_events,
+            capacity=self.capacity,
+            pressure_ratio=ratio,
+            state=state,
+            dropped_events=self._dropped_events,
+            sampled_batches=self._sampled_batches,
+        )
+
     def enqueue(self, batch: NormalizedEventBatch) -> None:
         incoming_count = len(batch.events)
         if self._queued_events + incoming_count > self.capacity:
+            if self.overflow_policy == "sample_low_priority":
+                batch = self._sample_to_capacity(batch)
+                incoming_count = len(batch.events)
+            if self._queued_events + incoming_count <= self.capacity:
+                self._batches.append(batch)
+                self._queued_events += incoming_count
+                return
             # 오래된 보안 이벤트를 조용히 버리면 탐지 공백이 생긴다. 호출자가
             # 재시도나 디스크 스풀을 선택할 수 있도록 명시적으로 실패시킨다.
             raise BufferFullError(
@@ -459,6 +829,26 @@ class EventBuffer:
             )
         self._batches.append(batch)
         self._queued_events += incoming_count
+
+    def _sample_to_capacity(self, batch: NormalizedEventBatch) -> NormalizedEventBatch:
+        available = self.capacity - self._queued_events
+        if available < 1:
+            return batch
+        protected = [event for event in batch.events if event.event_type not in self.SAMPLEABLE_EVENT_TYPES]
+        sampleable = [event for event in batch.events if event.event_type in self.SAMPLEABLE_EVENT_TYPES]
+        # 프로세스·파일·Defender·계정 변경 같은 고가치 이벤트는 절대 샘플링하지 않는다.
+        if len(protected) > available or not sampleable:
+            return batch
+        sample_slots = available - len(protected)
+        if sample_slots >= len(sampleable):
+            return batch
+        sampled = [] if sample_slots == 0 else [sampleable[min(len(sampleable) - 1, int(index * len(sampleable) / sample_slots))] for index in range(sample_slots)]
+        selected_ids = {event.event_id for event in [*protected, *sampled]}
+        selected = [event for event in batch.events if event.event_id in selected_ids]
+        dropped = len(batch.events) - len(selected)
+        self._dropped_events += dropped
+        self._sampled_batches += 1
+        return batch.model_copy(update={"events": selected})
 
     def flush(self, *, max_batches: int | None = None) -> list[IngestionReceipt]:
         if max_batches is not None and max_batches < 1:

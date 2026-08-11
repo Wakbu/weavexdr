@@ -3,7 +3,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from xdr_graph.api import ApiRuntime, create_app
+from xdr_graph.api import ApiRuntime, create_app, load_dashboard_html, load_world_map_svg
 from xdr_graph.events import IncidentEventBroker
 from xdr_graph.ingestion import NormalizedEventBatch
 from xdr_graph.response import ApprovalService, DryRunResponseService
@@ -80,6 +80,10 @@ def test_dashboard_and_settings_are_available_without_rendering_event_html():
         assert "if(!badge||!sideStatus)return" in dashboard.text
         assert 'id="overview-topology"' in dashboard.text
         assert 'id="overview-geo"' in dashboard.text
+        assert 'id="threat-globe"' in dashboard.text
+        assert "createThreatGlobe" in dashboard.text
+        assert "recentAttackHotspots" in dashboard.text
+        assert "textureLoaded:Boolean(texture)" in dashboard.text
         assert 'data-tab="graph"' in dashboard.text
         assert "createElementNS" in dashboard.text
         assert "'/collector/configure'" in dashboard.text
@@ -93,6 +97,12 @@ def test_dashboard_and_settings_are_available_without_rendering_event_html():
         assert 'id="modal-token"' not in dashboard.text
         assert "saveToken(" not in dashboard.text
         assert "별도 인증 정보 입력은 필요하지 않습니다" in dashboard.text
+        assert '<textarea id="scan-paths"' not in dashboard.text
+        assert 'id="scan-files"' in dashboard.text
+        assert 'id="scan-folder"' in dashboard.text
+        assert 'id="scan-paths-clear"' in dashboard.text
+        assert "api('/dialogs/scan-paths'" in dashboard.text
+        assert "paths=[...state.scanPaths]" in dashboard.text
         assert "location.host" in dashboard.text
         assert "incidentPageSize: 50" in dashboard.text
         assert "[50,100].forEach" in dashboard.text
@@ -105,6 +115,22 @@ def test_dashboard_and_settings_are_available_without_rendering_event_html():
         assert "initialScale=interactive?1" in dashboard.text
         assert "transform.scale=initialScale" in dashboard.text
         assert "분류되지 않은 보안 사건" in dashboard.text
+        assert 'rel="icon" href="/assets/weavexdr.svg"' in dashboard.text
+        assert 'class="brand-mark" src="/assets/weavexdr.svg"' in dashboard.text
+        assert 'id="response-settings"' in dashboard.text
+        assert 'id="storage-settings"' in dashboard.text
+        assert "api('/storage/health')" in dashboard.text
+        assert "'/storage/backup'" in dashboard.text
+        assert "response_capabilities" in dashboard.text
+
+        icon = client.get("/assets/weavexdr.svg")
+        assert icon.status_code == 200
+        assert icon.headers["content-type"].startswith("image/svg+xml")
+        assert "WeaveXDR" in icon.text
+        favicon = client.get("/favicon.ico")
+        assert favicon.status_code == 200
+        assert favicon.headers["content-type"].startswith("image/x-icon")
+        assert len(favicon.content) > 10_000
 
         assert client.get("/settings").status_code == 401
         settings = client.get("/settings", headers=AUTH).json()
@@ -113,3 +139,37 @@ def test_dashboard_and_settings_are_available_without_rendering_event_html():
         assert settings["model"]["fallback"] == "rules"
     finally:
         store.close()
+
+
+def test_dashboard_exposes_management_and_advanced_graph_controls():
+    dashboard = load_dashboard_html()
+    for marker in (
+        'id="status-filter"', 'id="entity-filter"', 'data-tab="manage"',
+        "hierarchical", "radial", "timeline", "graph-minimap",
+        "export('svg')", "export('png')", "export('json')",
+        "showEntityContextMenu", "ArrowLeft", "delete-demos",
+    ):
+        assert marker in dashboard
+
+
+def test_graph_minimap_does_not_cover_interactive_canvas():
+    dashboard = load_dashboard_html()
+    assert ".attack-graph>.graph-minimap" in dashboard
+    assert "pointer-events:none" in dashboard
+    assert "container.clientWidth||560" in dashboard
+    assert "type-toggle" in dashboard
+
+
+def test_geo_map_uses_connected_eurasia_and_never_guesses_unknown_country():
+    dashboard = load_dashboard_html()
+    world_map = load_world_map_svg()
+    assert "Natural Earth 국가 경계" in dashboard
+    assert "/assets/world-map.svg" in dashboard
+    assert "map-leader" in dashboard
+    assert "Natural Earth 1:110m" in world_map
+    assert "country-kor" in world_map
+    assert "country-jpn" in world_map
+    assert world_map.count("<path") > 150
+    assert "로컬 GeoIP 데이터 필요" in dashboard
+    assert "대한민국 · 서울" in dashboard
+    assert "x:35+(first*7)%255" not in dashboard

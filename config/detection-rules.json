@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "rule_version": "20260809.1",
+  "rule_version": "20260809.2",
   "sources": [
     {
       "framework": "owasp",
@@ -103,6 +103,36 @@
           "url": "https://attack.mitre.org/techniques/T1071/"
         }
       ]
+    },
+    {
+      "rule_id": "SUPPLY-CHAIN-001", "source": "behavior", "severity": 75,
+      "reason": "New driver or kernel service requires signature and provenance review", "enabled": true,
+      "match": {"event_type": "driver_install"},
+      "references": [{"framework": "mitre_attack", "external_id": "T1547.006", "url": "https://attack.mitre.org/techniques/T1547/006/"}]
+    },
+    {
+      "rule_id": "LOLBIN-001", "source": "behavior", "severity": 65,
+      "reason": "A living-off-the-land binary used a remote or script payload", "enabled": true,
+      "match": {"event_type": "process_start", "process_names": ["mshta.exe", "rundll32.exe", "regsvr32.exe", "certutil.exe"], "command_contains_any": ["http://", "https://", "javascript:", "scrobj.dll"]},
+      "references": [{"framework": "mitre_attack", "external_id": "T1218", "url": "https://attack.mitre.org/techniques/T1218/"}]
+    },
+    {
+      "rule_id": "RANSOM-001", "source": "behavior", "severity": 90,
+      "reason": "Command attempted recovery inhibition or mass shadow-copy removal", "enabled": true,
+      "match": {"event_type": "process_start", "command_contains_any": ["vssadmin delete shadows", "wmic shadowcopy delete", "bcdedit /set recoveryenabled no"]},
+      "references": [{"framework": "mitre_attack", "external_id": "T1490", "url": "https://attack.mitre.org/techniques/T1490/"}]
+    },
+    {
+      "rule_id": "INFOSTEALER-001", "source": "behavior", "severity": 80,
+      "reason": "PowerShell script referenced browser credential stores", "enabled": true,
+      "match": {"event_type": "powershell_script", "field_contains_any": {"command_line": ["login data", "local state", "cookies"]}},
+      "references": [{"framework": "mitre_attack", "external_id": "T1555.003", "url": "https://attack.mitre.org/techniques/T1555/003/"}]
+    },
+    {
+      "rule_id": "WORM-001", "source": "behavior", "severity": 85,
+      "reason": "Remote service creation indicates lateral propagation", "enabled": true,
+      "match": {"event_type": "service_install", "field_contains_any": {"details": ["admin$", "\\\\"]}},
+      "references": [{"framework": "mitre_attack", "external_id": "T1021.002", "url": "https://attack.mitre.org/techniques/T1021/002/"}]
     }
   ]
 }

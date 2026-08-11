@@ -67,14 +67,24 @@ class CollectEvidenceCommand(BaseResponseCommand):
 
 class BlockNetworkCommand(BaseResponseCommand):
     action: Literal["block_network"]
-    remote_ip: str
+    remote_ip: str | None = None
+    remote_domain: str | None = Field(default=None, pattern=r"^([A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$", max_length=253)
+    program_path: str | None = None
+    duration_minutes: int = Field(default=60, ge=1, le=10080)
 
     @field_validator("remote_ip")
     @classmethod
-    def require_ip_address(cls, value: str) -> str:
+    def require_ip_address(cls, value: str | None) -> str | None:
         from ipaddress import ip_address
 
-        return str(ip_address(value))
+        return str(ip_address(value)) if value else None
+
+    @model_validator(mode="after")
+    def require_one_network_target(self) -> "BlockNetworkCommand":
+        targets = [self.remote_ip, self.remote_domain, self.program_path]
+        if sum(value is not None for value in targets) != 1:
+            raise ValueError("exactly one network target is required")
+        return self
 
 
 ResponseCommand = Annotated[
@@ -112,6 +122,8 @@ class DryRunResult(BaseModel):
     approval_required: bool
     reasons: list[str]
     target_summary: str
+    impact_scope: list[str] = Field(default_factory=list)
+    reversible: bool = False
 
 
 class ApprovalRecord(BaseModel):
@@ -154,7 +166,17 @@ class DryRunResponseService:
                 reasons.append("target is under a protected system path")
             target_summary = f"file path={command.file_path} sha256={command.sha256.lower()}"
         elif isinstance(command, BlockNetworkCommand):
-            target_summary = f"remote_ip={command.remote_ip} direction=outbound"
+            target_type, target = (
+                ("remote_ip", command.remote_ip)
+                if command.remote_ip
+                else ("remote_domain", command.remote_domain)
+                if command.remote_domain
+                else ("program", command.program_path)
+            )
+            target_summary = (
+                f"{target_type}={target} direction=outbound "
+                f"expires_in={command.duration_minutes}m"
+            )
         else:
             report_event_ids = {event.event_id for event in incident_report.source_events}
             if not set(command.event_ids) <= report_event_ids:
@@ -168,6 +190,7 @@ class DryRunResponseService:
             approval_required=command.action in self.policy.approval_required_actions,
             reasons=reasons or ["dry-run validation passed; no system change was performed"],
             target_summary=target_summary,
+            reversible=isinstance(command, (QuarantineFileCommand, BlockNetworkCommand)),
         )
 
     def _is_protected_path(self, file_path: str) -> bool:

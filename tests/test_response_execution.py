@@ -12,7 +12,8 @@ from xdr_graph.response import (
     QuarantineFileCommand,
     TerminateProcessCommand,
 )
-from xdr_graph.response_execution import ActualResponseService, ProcessIdentity
+from xdr_graph.response_execution import ActualResponseService, ProcessIdentity, RecoveryRegistry
+from xdr_graph.response_playbook import PlaybookStep, ResponsePlaybook, ResponsePlaybookService
 from xdr_graph.workflow import build_workflow
 
 
@@ -89,6 +90,33 @@ class FakeFirewallController:
 
     def unblock(self, rule_name: str) -> None:
         self.unblocked.append(rule_name)
+
+
+class FakeProcessTreeController(FakeProcessController):
+    def __init__(self, *, protected_child: bool = False) -> None:
+        super().__init__()
+        self.protected_child = protected_child
+        self.terminated_tree: list[int] = []
+
+    def inspect_tree(self, process_id: int) -> list[ProcessIdentity]:
+        return [
+            ProcessIdentity(
+                process_id=5000,
+                start_time=NOW,
+                image_path="C:\\Windows\\System32\\lsass.exe" if self.protected_child else "C:\\Tools\\child.exe",
+            ),
+            self.inspect(process_id),
+        ]
+
+    def terminate_tree(self, process_ids: list[int]) -> None:
+        self.terminated_tree.extend(process_ids)
+
+
+class FlexibleFirewallController(FakeFirewallController):
+    def block_target(self, command) -> str:
+        target = command.remote_ip or command.remote_domain or command.program_path
+        self.blocked.append(target)
+        return "WeaveXDR-flexible-rule"
 
 
 def approved_execution_service(process_controller=None):
@@ -212,3 +240,88 @@ def test_analysis_summary_is_written_to_the_same_audit_contract():
         assert record.category == "analysis"
         assert record.details["incident_id"] == receipt.incident_id
         assert record.details["risk_score"] == receipt.report.risk_score
+
+
+def test_process_tree_impact_is_previewed_and_terminated_children_first():
+    controller = FakeProcessTreeController()
+    service, approval, audit, _ = approved_execution_service(controller)
+    report = suspicious_report()
+    command = terminate_command("tree-command")
+    approval_id = approve(command, report, service, approval)
+
+    preview = service.preview_impact(command, report)
+    result = service.execute(command, report, approval_id=approval_id)
+
+    assert preview.allowed is True
+    assert len(preview.affected_resources) == 2
+    assert controller.terminated_tree == [5000, 4242]
+    assert result.status == "succeeded"
+
+
+def test_protected_process_inside_tree_blocks_the_whole_action():
+    controller = FakeProcessTreeController(protected_child=True)
+    service, approval, _, _ = approved_execution_service(controller)
+    report = suspicious_report()
+    command = terminate_command("protected-tree")
+    approval_id = approve(command, report, service, approval)
+
+    preview = service.preview_impact(command, report)
+    result = service.execute(command, report, approval_id=approval_id)
+
+    assert preview.allowed is False
+    assert "lsass.exe" in preview.protected_resources[0]
+    assert result.status == "failed"
+    assert controller.terminated_tree == []
+
+
+def test_domain_block_expires_and_is_removed_from_persistent_recovery_registry():
+    audit = SQLiteAuditLog(":memory:", clock=lambda: NOW)
+    approval = ApprovalService(clock=lambda: NOW)
+    firewall = FlexibleFirewallController()
+    service = ActualResponseService(
+        DryRunResponseService(), approval, audit, FakeQuarantineStore(),
+        firewall_controller=firewall, recovery_registry=RecoveryRegistry(), clock=lambda: NOW,
+    )
+    report = suspicious_report()
+    command = BlockNetworkCommand(
+        command_id="domain-block", incident_id="incident-001", action="block_network",
+        requested_at=NOW, remote_domain="malicious.example", duration_minutes=15,
+    )
+    approval_id = approve(command, report, service, approval)
+
+    result = service.execute(command, report, approval_id=approval_id)
+    removed = service.expire_network_blocks(now=NOW + timedelta(minutes=16))
+
+    assert result.status == "succeeded"
+    assert firewall.blocked == ["malicious.example"]
+    assert removed == ["WeaveXDR-flexible-rule"]
+    assert service.list_recoveries() == []
+
+
+def test_playbook_simulation_and_execution_keep_step_approvals_separate():
+    service, approval, _, _ = approved_execution_service()
+    report = suspicious_report()
+    terminate = terminate_command("playbook-terminate")
+    quarantine = QuarantineFileCommand(
+        command_id="playbook-quarantine", incident_id="incident-001", action="quarantine_file",
+        requested_at=NOW, file_path="C:\\Temp\\payload.exe", sha256="b" * 64,
+    )
+    playbook = ResponsePlaybook(
+        playbook_id="containment", name="격리", incident_id="incident-001",
+        steps=[
+            PlaybookStep(step_id="terminate", command=terminate.model_dump(mode="json")),
+            PlaybookStep(step_id="quarantine", command=quarantine.model_dump(mode="json"), depends_on=["terminate"]),
+        ],
+    )
+    approvals = {
+        terminate.command_id: approve(terminate, report, service, approval),
+        quarantine.command_id: approve(quarantine, report, service, approval),
+    }
+    playbooks = ResponsePlaybookService(service)
+
+    simulation = playbooks.simulate(playbook, report)
+    result = playbooks.execute(playbook, report, approvals=approvals)
+
+    assert simulation.allowed is True
+    assert result.status == "succeeded"
+    assert [step.status for step in result.steps] == ["succeeded", "succeeded"]

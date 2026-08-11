@@ -37,6 +37,22 @@ def default_watch_directories() -> tuple[Path, ...]:
     return tuple(unique_paths.values())
 
 
+def removable_watch_directories() -> tuple[Path, ...]:
+    """현재 연결된 이동식 드라이브 루트만 반환하며 네트워크 드라이브는 제외한다."""
+    if os.name != "nt":
+        return ()
+    import ctypes
+    roots = []
+    mask = ctypes.windll.kernel32.GetLogicalDrives()
+    for index in range(26):
+        if not mask & (1 << index):
+            continue
+        root = Path(f"{chr(65 + index)}:\\")
+        if ctypes.windll.kernel32.GetDriveTypeW(str(root)) == 2 and root.is_dir():
+            roots.append(root)
+    return tuple(roots)
+
+
 def _list_directory_files(root: Path, recursive: bool) -> Iterable[Path]:
     entries = root.rglob("*") if recursive else root.iterdir()
     # 링크를 따라가면 감시 범위 밖 파일까지 검사할 수 있으므로 명시적으로 제외한다.
@@ -116,6 +132,7 @@ class DirectoryFileWatcher:
         on_result: Callable[[WatchedFileResult], None],
         *,
         poll_interval: float = 2.0,
+        interval_provider: Callable[[], float] | None = None,
     ) -> None:
         if poll_interval <= 0:
             raise ValueError("poll_interval must be positive")
@@ -123,7 +140,8 @@ class DirectoryFileWatcher:
             for result in self.scan_once():
                 on_result(result)
             # Event.wait를 사용하면 종료 신호가 왔을 때 sleep보다 즉시 깨어날 수 있다.
-            stop_event.wait(poll_interval)
+            effective_interval = interval_provider() if interval_provider else poll_interval
+            stop_event.wait(max(.25, effective_interval))
 
     def _snapshot_paths(self) -> set[Path]:
         files: set[Path] = set()

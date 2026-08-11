@@ -101,10 +101,35 @@ class NetworkConnectEvent(BaseSecurityEvent):
         return str(ip_address(value)) if value is not None else None
 
 
+class WindowsTelemetryEvent(BaseSecurityEvent):
+    """Security·PowerShell·Defender 등 Windows 채널의 공통 확장 이벤트."""
+
+    event_type: Literal[
+        "authentication", "privilege_use", "powershell_script", "defender_detection",
+        "dns_query", "registry_persistence", "service_install", "scheduled_task",
+        "wmi_subscription", "driver_install", "account_change", "remote_access",
+        "usb_device", "firewall_connection",
+    ]
+    windows_event_id: int = Field(ge=0)
+    channel: str = Field(min_length=1)
+    action: str = Field(min_length=1)
+    user: str | None = None
+    process_name: str | None = None
+    process_id: int | None = Field(default=None, ge=0)
+    command_line: str | None = None
+    target: str | None = None
+    source_ip: str | None = None
+    destination_ip: str | None = None
+    destination_port: int | None = Field(default=None, ge=1, le=65535)
+    protocol: str | None = None
+    outcome: str | None = None
+    details: dict[str, str] = Field(default_factory=dict)
+
+
 # event_type을 판별자로 사용하면 Pydantic이 필요한 필드를 이벤트 종류별로
 # 검사한다. 기존처럼 모든 필드를 Optional로 두었을 때 생기던 불완전 이벤트를 막는다.
 SecurityEvent = Annotated[
-    ProcessStartEvent | FileCreateEvent | NetworkConnectEvent,
+    ProcessStartEvent | FileCreateEvent | NetworkConnectEvent | WindowsTelemetryEvent,
     Field(discriminator="event_type"),
 ]
 
@@ -125,7 +150,10 @@ class Finding(BaseModel):
 
 
 class ThreatReference(BaseModel):
-    framework: Literal["owasp", "owasp_genai", "mitre_attack", "cisa_kev", "local"]
+    framework: Literal[
+        "owasp", "owasp_genai", "mitre_attack", "cisa_kev", "sigma", "stix",
+        "taxii", "reputation", "local",
+    ]
     external_id: str = Field(min_length=1)
     url: str | None = None
 

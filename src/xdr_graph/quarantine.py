@@ -21,6 +21,7 @@ class QuarantineItem(BaseModel):
     status: str
     quarantined_at: datetime
     restored_at: datetime | None = None
+    reason: str | None = None
 
 
 class QuarantineStore:
@@ -152,6 +153,35 @@ class QuarantineStore:
                 datetime.fromisoformat(row["restored_at"]) if row["restored_at"] else None
             ),
         )
+
+    def list_items(self, *, status: str | None = None, limit: int = 200) -> list[QuarantineItem]:
+        """격리 목록은 파일 내용을 열지 않고 메타데이터만 반환한다."""
+        query = "SELECT item_id FROM quarantine_items"
+        parameters: tuple[object, ...] = ()
+        if status:
+            query += " WHERE status = ?"
+            parameters = (status,)
+        query += " ORDER BY quarantined_at DESC LIMIT ?"
+        parameters += (max(1, min(limit, 1000)),)
+        with self._lock:
+            rows = self._connection.execute(query, parameters).fetchall()
+        return [self.get(row["item_id"]) for row in rows]
+
+    def purge_expired(self, *, retention_days: int = 30) -> int:
+        """보존 기간을 지난 격리본만 삭제하며 복원 이력 레코드는 남긴다."""
+        from datetime import timedelta
+        cutoff = datetime.now(timezone.utc) - timedelta(days=max(1, retention_days))
+        removed = 0
+        for item in self.list_items(status="quarantined", limit=1000):
+            if item.quarantined_at >= cutoff:
+                continue
+            quarantine_path = Path(item.quarantine_path)
+            if quarantine_path.is_file():
+                quarantine_path.unlink()
+            with self._lock, self._connection:
+                self._connection.execute("UPDATE quarantine_items SET status='expired' WHERE item_id=?", (item.item_id,))
+            removed += 1
+        return removed
 
     @staticmethod
     def _sha256(file_path: Path) -> str:

@@ -138,6 +138,7 @@ class SysmonCollector:
         self.poll_interval = poll_interval
         self.logger = logger or logging.getLogger(__name__)
         self._stop_event = Event()
+        self._pause_event = Event()
         self._thread: Thread | None = None
         self._parser = SysmonXmlParser()
         self._processed_count = 0
@@ -159,10 +160,26 @@ class SysmonCollector:
             self._publish_status("stopped", "Sysmon 수집기 종료됨")
         return stopped
 
+    def pause(self) -> None:
+        # 커서를 폐기하지 않고 읽기만 멈춰 재개 시 중간 이벤트를 유실하지 않는다.
+        self._pause_event.set()
+        self._publish_status("paused", "Sysmon 수집 일시정지")
+
+    def resume(self) -> None:
+        self._pause_event.clear()
+        self._publish_status("running", "실시간 Sysmon 수집 중")
+
+    @property
+    def paused(self) -> bool:
+        return self._pause_event.is_set()
+
     def _run(self) -> None:
         reader: SysmonEventReader | None = None
         cursor: int | None = None
         while not self._stop_event.is_set():
+            if self._pause_event.is_set():
+                self._stop_event.wait(self.poll_interval)
+                continue
             try:
                 if reader is None:
                     reader = self.reader_factory()
@@ -225,7 +242,8 @@ class SysmonCollector:
         status: dict[str, object] = {
             "state": state,
             "label": label,
-            "sources": ["Sysmon"] if state in {"starting", "running"} else [],
+            "source": "Sysmon",
+            "sources": ["Sysmon"] if state in {"starting", "running", "paused"} else [],
             "processed_events": self._processed_count,
         }
         if last_event_at:

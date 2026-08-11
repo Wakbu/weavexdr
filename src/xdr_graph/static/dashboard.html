@@ -4,6 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>WeaveXDR</title>
+  <link rel="icon" href="/assets/weavexdr.svg" type="image/svg+xml">
+  <link rel="alternate icon" href="/favicon.ico" type="image/x-icon">
   <style>
     :root {
       color-scheme: dark; --bg:#07101c; --sidebar:#091522; --surface:#0d1b2a; --surface-2:#112338;
@@ -12,11 +14,11 @@
       font-family: Inter, Pretendard, "Noto Sans KR", system-ui, sans-serif;
     }
     * { box-sizing:border-box; } body { margin:0; background:var(--bg); color:var(--text); min-width:320px; }
-    button, input, select { font:inherit; } button { color:inherit; }
+    button, input, select, textarea { font:inherit; box-sizing:border-box; } button { color:inherit; }
     .shell { min-height:100vh; display:grid; grid-template-columns:240px 1fr; }
     .sidebar { background:var(--sidebar); border-right:1px solid var(--line-soft); padding:22px 16px; display:flex; flex-direction:column; position:sticky; top:0; height:100vh; }
     .brand { display:flex; align-items:center; gap:11px; padding:0 10px 24px; font-size:20px; font-weight:800; letter-spacing:-.4px; }
-    .brand-mark { width:34px; height:38px; display:grid; place-items:center; color:#fff; background:linear-gradient(145deg,var(--blue),#7458ff); clip-path:polygon(50% 0,94% 18%,88% 72%,50% 100%,12% 72%,6% 18%); font-size:15px; }
+    .brand-mark { width:36px; height:36px; flex:0 0 auto; display:block; filter:drop-shadow(0 5px 12px #06111baa); }
     .nav-label { color:#607991; font-size:11px; font-weight:800; letter-spacing:1.2px; padding:8px 12px; }
     .nav { display:grid; gap:5px; }
     .nav button { border:0; background:transparent; border-radius:9px; padding:11px 12px; text-align:left; color:var(--muted); display:flex; align-items:center; gap:11px; cursor:pointer; }
@@ -33,9 +35,10 @@
     .top-actions { display:flex; align-items:center; gap:10px; }
     .connection { border:1px solid #265240; background:#102a25; color:#8ce5ba; padding:8px 11px; border-radius:999px; font-size:12px; font-weight:700; }
     .connection.offline { border-color:#5d3440; background:#2c1820; color:#ff9aa7; }
-    .icon-button, .primary, .secondary { border:1px solid var(--line); border-radius:8px; cursor:pointer; padding:9px 13px; font-weight:700; }
+    .icon-button, .primary, .secondary { min-height:40px; border:1px solid var(--line); border-radius:8px; cursor:pointer; padding:9px 13px; font-weight:700; display:inline-flex; align-items:center; justify-content:center; line-height:1.2; white-space:nowrap; }
     .icon-button, .secondary { background:var(--surface-2); } .primary { background:var(--blue); border-color:var(--blue); color:white; }
     .icon-button:hover, .secondary:hover { border-color:#416486; } .primary:hover { background:#347bf5; }
+    button:disabled { opacity:.45; cursor:not-allowed; }
     .content { padding:26px 30px 50px; max-width:1600px; margin:auto; }
     .page { display:none; } .page.active { display:block; }
     .section-head { display:flex; align-items:flex-end; justify-content:space-between; gap:20px; margin-bottom:16px; }
@@ -72,8 +75,12 @@
     .empty { text-align:center; padding:48px 20px; color:var(--muted); } .empty-icon { width:56px; height:56px; border:1px solid var(--line); background:#102034; border-radius:15px; display:grid; place-items:center; margin:0 auto 14px; font-size:23px; }
     .empty strong { display:block; color:var(--text); margin-bottom:7px; } .empty p { max-width:460px; margin:0 auto 17px; line-height:1.65; font-size:12px; }
     .toolbar { display:flex; gap:9px; align-items:center; flex-wrap:wrap; }
-    .search { min-width:260px; border:1px solid var(--line); background:#0a1725; color:var(--text); padding:9px 11px; border-radius:8px; outline:none; }
-    .search:focus { border-color:var(--blue); } select { border:1px solid var(--line); background:#0a1725; color:var(--text); padding:9px 28px 9px 10px; border-radius:8px; }
+    input, select, textarea { min-height:40px; border:1px solid var(--line); background:#091725; color:var(--text); padding:9px 11px; border-radius:8px; outline:none; }
+    input::placeholder, textarea::placeholder { color:#647b91; }
+    input:focus, select:focus, textarea:focus { border-color:var(--blue); box-shadow:0 0 0 3px #4c8dff1c; }
+    textarea { display:block; width:100%; min-height:96px; resize:vertical; line-height:1.55; }
+    select { padding-right:32px; }
+    .search { min-width:260px; }
     .investigation-shell { display:grid; grid-template-columns:minmax(0,1fr) 330px; gap:14px; }
     .incident-hero { padding:20px; margin-bottom:14px; display:flex; justify-content:space-between; gap:20px; }
     .incident-hero h2 { margin:6px 0 8px; font-size:20px; } .incident-id { color:var(--muted); font:11px ui-monospace,monospace; }
@@ -90,13 +97,31 @@
     .health-row span { color:var(--muted); } .health-row strong { font-size:10px; }
     .settings-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
     .setting-card { padding:20px; } .setting-card h3 { font-size:14px; margin:0 0 5px; } .setting-card>p { color:var(--muted); font-size:11px; margin:0 0 17px; }
+    .form-stack { display:grid; gap:13px; }
+    .field-group { display:grid; gap:7px; min-width:0; }
+    .field-group label { color:#a9bacb; font-size:11px; font-weight:700; }
+    .field-group input, .field-group select, .field-group textarea { width:100%; }
+    .form-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding-top:2px; }
+    .scan-grid { display:grid; grid-template-columns:minmax(320px,1.05fr) minmax(300px,.95fr); gap:14px; align-items:start; }
+    .scan-grid .quarantine-card { grid-column:1/-1; }
+    .scan-progress { height:7px; overflow:hidden; border-radius:999px; background:#07121d; border:1px solid var(--line-soft); margin-bottom:14px; }
+    .scan-progress-bar { width:0; height:100%; background:linear-gradient(90deg,var(--blue),var(--cyan)); transition:width .25s ease; }
+    .scan-note { display:flex; gap:8px; align-items:flex-start; margin-top:13px; padding:11px; border-radius:8px; background:#0a1724; color:var(--muted); font-size:11px; line-height:1.5; }
+    .scan-note strong { color:var(--amber); }
+    .path-picker-actions { display:flex; gap:8px; flex-wrap:wrap; }
+    .selected-paths { min-height:92px; max-height:180px; overflow:auto; display:grid; align-content:start; gap:7px; padding:10px; border:1px solid var(--line); border-radius:9px; background:#07131f; }
+    .selected-path-empty { color:var(--muted); font-size:11px; line-height:1.55; padding:7px 3px; }
+    .selected-path-item { display:flex; align-items:center; gap:8px; min-width:0; padding:8px 9px; border:1px solid var(--line-soft); border-radius:7px; background:#0c1b2a; color:#c8d6e4; font:11px ui-monospace,monospace; }
+    .selected-path-item::before { content:'✓'; color:var(--cyan); font-family:system-ui,sans-serif; font-weight:800; }
+    .selected-path-item span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .setting-card .setting-list + .secondary, .setting-card .form-stack + .setting-list { margin-top:14px; }
     .setting-list { display:grid; gap:10px; } .setting-row { display:flex; justify-content:space-between; gap:20px; border-top:1px solid var(--line-soft); padding-top:10px; font-size:11px; } .setting-row span { color:var(--muted); } .setting-row strong { text-align:right; }
     .modal-backdrop { position:fixed; inset:0; background:#02070dbb; backdrop-filter:blur(5px); z-index:40; display:none; place-items:center; padding:20px; }
     .modal-backdrop.open { display:grid; } .modal { width:min(430px,100%); padding:24px; background:var(--surface); border:1px solid #315270; border-radius:14px; box-shadow:0 24px 80px #0009; }
     .modal h2 { margin:0 0 8px; } .modal p { color:var(--muted); font-size:12px; line-height:1.6; } .modal input { width:100%; margin:12px 0; border:1px solid var(--line); background:#081521; color:#fff; padding:11px; border-radius:8px; }
     .toast { position:fixed; right:24px; bottom:24px; background:#142b40; border:1px solid #315473; border-radius:10px; padding:12px 15px; font-size:12px; transform:translateY(90px); opacity:0; transition:.25s; z-index:50; }
     .toast.show { transform:none; opacity:1; }
-    @media (max-width:1050px) { .shell{grid-template-columns:74px 1fr}.brand span,.nav-label,.nav button span:not(.nav-icon),.sidebar-footer{display:none}.brand{padding-left:3px}.nav button{justify-content:center}.kpi-grid{grid-template-columns:repeat(2,1fr)}.investigation-shell{grid-template-columns:1fr}.settings-grid{grid-template-columns:1fr} }
+    @media (max-width:1050px) { .shell{grid-template-columns:74px 1fr}.brand span,.nav-label,.nav button span:not(.nav-icon),.sidebar-footer{display:none}.brand{padding-left:3px}.nav button{justify-content:center}.kpi-grid{grid-template-columns:repeat(2,1fr)}.investigation-shell{grid-template-columns:1fr}.settings-grid,.scan-grid{grid-template-columns:1fr}.scan-grid .quarantine-card{grid-column:auto} }
     @media (max-width:720px) { .topbar{padding:0 16px}.content{padding:18px 16px}.dashboard-grid,.kpi-grid{grid-template-columns:1fr}.top-actions .secondary{display:none}.severity-wrap{grid-template-columns:120px 1fr}.search{min-width:100%}.table-panel{overflow:auto}.incident-hero{flex-direction:column}.hero-score{border-left:0;border-top:1px solid var(--line);padding:12px 0 0;text-align:left}.detail-grid{grid-template-columns:1fr} }
 
     /* 제품 화면은 장식보다 정보 밀도와 계층을 우선한다. 과한 그라데이션·광택·둥근
@@ -146,6 +171,19 @@
     .signal-cell.health strong { font-size:17px; }
     .signal-cell small { color:#7a828b; font-size:11px; }
     .operations-grid { display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:12px; margin-bottom:12px; }
+    .globe-panel { margin-bottom:12px; overflow:hidden; }
+    .globe-stage { position:relative; min-height:360px; display:grid; place-items:center; border:1px solid var(--line-soft); background:radial-gradient(circle at 50% 45%,#122d43 0,#07131f 48%,#050b12 76%); overflow:hidden; cursor:grab; touch-action:none; }
+    .globe-stage.dragging { cursor:grabbing; }
+    .threat-globe-canvas { width:100%; height:360px; display:block; }
+    .globe-controls { position:absolute; right:12px; bottom:12px; display:flex; gap:6px; padding:6px; border:1px solid var(--line); background:#07131fdd; border-radius:9px; }
+    .globe-controls button { width:36px; height:34px; min-height:34px; padding:0; border:0; background:transparent; color:var(--text); cursor:pointer; border-radius:6px; font-weight:800; }
+    .globe-controls button:hover { background:#173354; }
+    .globe-caption { position:absolute; left:13px; bottom:13px; max-width:min(520px,70%); color:#8fa6ba; font-size:11px; line-height:1.55; pointer-events:none; }
+    .globe-caption strong { display:block; color:#dce8f3; font-size:12px; }
+    .globe-hotspots { display:flex; flex-wrap:wrap; gap:8px; padding-top:11px; }
+    .globe-hotspot { display:flex; align-items:center; gap:7px; padding:7px 9px; border:1px solid var(--line-soft); background:#0a1724; border-radius:8px; color:var(--muted); font-size:11px; }
+    .globe-hotspot i { width:7px; height:7px; border-radius:50%; background:var(--red); box-shadow:0 0 10px #ff5d73aa; }
+    .globe-hotspot strong { color:var(--text); }
     .topology-panel { grid-column:span 8; min-height:390px; }
     .geo-card { grid-column:span 4; min-height:390px; }
     .trend-panel { grid-column:span 8; }
@@ -156,7 +194,7 @@
     .entity-dot.external { background:var(--red); }.entity-dot.endpoint { background:var(--cyan); }.entity-dot.process { background:var(--blue); }.entity-dot.file { background:var(--amber); }
     .topology-canvas,.attack-graph { min-height:315px; border:1px solid var(--line-soft); background-color:#101317; background-image:linear-gradient(#1b2026 1px,transparent 1px),linear-gradient(90deg,#1b2026 1px,transparent 1px); background-size:32px 32px; overflow:hidden; position:relative; touch-action:none; cursor:grab; }
     .topology-canvas.is-panning,.attack-graph.is-panning { cursor:grabbing; }
-    .topology-canvas svg,.attack-graph svg,.geo-map svg { width:100%; height:100%; display:block; }
+    .topology-canvas>svg:not(.graph-minimap),.attack-graph>svg:not(.graph-minimap),.geo-map>svg { width:100%; height:100%; display:block; }
     .topology-empty { height:315px; display:grid; place-items:center; color:var(--muted); font-size:11px; text-align:center; line-height:1.7; }
     .graph-edge { stroke:#45505c; stroke-width:1.2; fill:none; }
     .graph-edge.alert { stroke:#bd555d; stroke-width:1.7; }
@@ -172,14 +210,18 @@
     .graph-node .node-title { fill:#f2f4f6; font-size:13px; font-weight:600; }
     .graph-node .node-detail { fill:#9aa2ab; font-size:10.5px; }
     .graph-node circle { stroke:#101317; stroke-width:3; }
-    .geo-map { height:210px; border:1px solid var(--line-soft); background:#101317; overflow:hidden; }
-    .geo-map.compact { height:145px; }
-    .map-grid { stroke:#20262d; stroke-width:.7; }
-    .land { fill:#1b2127; stroke:#303840; stroke-width:.7; }
-    .map-arc { fill:none; stroke:#95515a; stroke-width:1.3; stroke-dasharray:3 3; }
+    .geo-map { height:230px; border:1px solid var(--line-soft); background:radial-gradient(circle at 62% 35%,#18232c 0,#101317 58%); overflow:hidden; }
+    .geo-map.compact { height:175px; }
+    .map-grid { stroke:#27313a; stroke-width:.55; stroke-dasharray:2 3; }
+    .land { fill:#242c33; stroke:#46525d; stroke-width:.65; }
+    .map-arc { fill:none; stroke:#dc6e78; stroke-width:1.3; stroke-dasharray:3 3; }
     .map-point { fill:var(--red); stroke:#31191d; stroke-width:3; }
     .map-home { fill:var(--cyan); stroke:#153432; stroke-width:3; }
-    .map-label { fill:#b5bbc2; font-size:12.5px; }
+    .map-label { fill:#edf1f4; font-size:11.5px; font-weight:600; paint-order:stroke; stroke:#101317; stroke-width:3px; stroke-linejoin:round; }
+    .map-country { fill:#aab3bb; font-size:9px; font-weight:600; letter-spacing:.2px; paint-order:stroke; stroke:#141a1f; stroke-width:2px; pointer-events:none; }
+    .map-leader { stroke:#778691; stroke-width:.65; stroke-dasharray:1.5 1.5; pointer-events:none; }
+    .world-map-base { opacity:.96; pointer-events:none; }
+    .map-ocean-label { fill:#596873; font-size:8px; font-style:italic; letter-spacing:1px; }
     .origin-list { display:grid; margin-top:10px; }
     .origin-row { display:grid; grid-template-columns:8px minmax(0,1fr) auto; gap:8px; align-items:center; padding:8px 0; border-top:1px solid var(--line-soft); font-size:11px; }
     .origin-row:first-child { border-top:0; }
@@ -216,10 +258,12 @@
     .entity-field { border-top:1px solid var(--line-soft); padding-top:8px; }
     .entity-field span { color:#818993; display:block; font-size:10px; margin-bottom:3px; }
     .entity-field strong { display:block; color:#cbd0d5; font:11px/1.55 ui-monospace,Consolas,monospace; overflow-wrap:anywhere; }
-    .canvas-controls { position:absolute; right:10px; bottom:10px; z-index:3; display:flex; align-items:center; background:#13171bd9; border:1px solid var(--line); padding:3px; gap:2px; }
+    .canvas-controls { position:absolute; right:10px; bottom:10px; z-index:4; display:flex; align-items:center; max-width:calc(100% - 20px); background:#13171bf2; border:1px solid var(--line); padding:3px; gap:2px; overflow:hidden; }
     .canvas-controls button { width:30px; height:28px; padding:0; border:0; background:transparent; color:#c3c9cf; cursor:pointer; font-size:14px; }
     .canvas-controls button:hover { background:#242a31; }
     .canvas-controls output { min-width:42px; text-align:center; color:#aab1b8; font:10px ui-monospace,Consolas,monospace; }
+    .canvas-controls .type-toggle { width:auto; min-width:48px; padding:0 6px; font-size:9px; }
+    .canvas-controls .timeline-slider { width:min(120px,22vw); min-height:28px; padding:0; }
     .graph-workbench { display:grid; grid-template-columns:205px minmax(0,1fr); gap:10px; }
     .activity-panel { border:1px solid var(--line-soft); background:#111418; min-height:485px; padding:12px; }
     .activity-panel h4 { margin:0 0 4px; font-size:14px; }.activity-panel>p { margin:0 0 10px; color:var(--muted); font-size:11px; line-height:1.5; }
@@ -244,18 +288,30 @@
     @media (max-width:1180px) { .topology-panel,.trend-panel{grid-column:span 7}.geo-card,.severity-panel{grid-column:span 5}.investigation-shell{grid-template-columns:1fr}.side-stack{grid-template-columns:repeat(2,minmax(0,1fr))} }
     @media (max-width:980px) { .graph-workbench{grid-template-columns:1fr}.activity-panel{min-height:auto}.activity-list{grid-template-columns:repeat(3,minmax(0,1fr))} }
     @media (max-width:900px) { .shell{grid-template-columns:68px 1fr}.signal-strip{grid-template-columns:repeat(2,1fr)}.signal-cell:nth-child(2){border-right:0}.signal-cell:nth-child(-n+2){border-bottom:1px solid var(--line)}.topology-panel,.geo-card,.trend-panel,.severity-panel{grid-column:1/-1}.topology-panel{min-height:350px}.side-stack{grid-template-columns:1fr 1fr} }
-    @media (max-width:640px) { .content{padding:15px 12px 40px}.topbar{padding:0 13px}.page-subtitle{display:none}.signal-strip{grid-template-columns:1fr}.signal-cell{border-right:0;border-bottom:1px solid var(--line)}.signal-cell:last-child{border-bottom:0}.graph-legend{display:none}.topology-panel,.geo-card{min-height:auto}.topology-canvas,.topology-empty{min-height:270px}.topology-canvas,.attack-graph{overflow:hidden}.operations-grid{gap:9px}.side-stack{grid-template-columns:1fr}.attack-graph{height:400px}.graph-toolbar{align-items:flex-start;flex-direction:column}.graph-search{width:100%}.activity-list{grid-template-columns:1fr}.tabs{gap:12px;overflow:auto}.tabs button{white-space:nowrap}.geo-map{height:180px}.pagination{align-items:flex-start;flex-direction:column}.pagination-controls{width:100%;justify-content:space-between} }
+    @media (max-width:640px) { .content{padding:15px 12px 40px}.topbar{padding:0 13px}.page-subtitle{display:none}.signal-strip{grid-template-columns:1fr}.signal-cell{border-right:0;border-bottom:1px solid var(--line)}.signal-cell:last-child{border-bottom:0}.graph-legend{display:none}.topology-panel,.geo-card{min-height:auto}.topology-canvas,.topology-empty{min-height:270px}.topology-canvas,.attack-graph{overflow:hidden}.operations-grid{gap:9px}.side-stack{grid-template-columns:1fr}.attack-graph{height:400px}.graph-toolbar{align-items:flex-start;flex-direction:column}.graph-search{width:100%}.activity-list{grid-template-columns:1fr}.tabs{gap:12px;overflow:auto}.tabs button{white-space:nowrap}.geo-map{height:180px}.threat-globe-canvas{height:300px}.globe-stage{min-height:300px}.globe-caption{max-width:62%}.pagination{align-items:flex-start;flex-direction:column}.pagination-controls{width:100%;justify-content:space-between} }
+    .advanced-filter { display:grid; grid-template-columns:repeat(5,minmax(120px,1fr)); gap:8px; margin:12px 0; }
+    .advanced-filter>* { width:100%; min-width:0; }
+    .management-panel { display:grid; gap:10px; }.management-panel input,.management-panel select,.management-panel textarea{width:100%}.management-panel textarea{min-height:82px;resize:vertical}.management-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    .management-actions,.graph-options { display:flex; gap:7px; flex-wrap:wrap; align-items:center; }
+    .demo-badge,.bookmark-badge { color:var(--amber); font-size:11px; margin-left:6px; }
+    .graph-node.hidden-type { display:none; }.graph-node.risk-dim { opacity:.16; }
+    .attack-graph>.graph-minimap { position:absolute; right:10px; bottom:48px; width:126px; height:82px; border:1px solid var(--line); background:#080b0ef2; z-index:3; pointer-events:none; }
+    .graph-minimap rect { fill:#56606a; }.graph-minimap .mini-view { fill:none; stroke:var(--cyan); stroke-width:2; }
+    .attack-marker { fill:var(--red); font-size:15px; font-weight:800; }
+    .timeline-slider { width:min(420px,100%); }.context-menu{position:fixed;z-index:50;padding:6px;background:#111820;border:1px solid var(--line);box-shadow:0 12px 35px #0008}.context-menu button{display:block;width:100%;text-align:left}
+    @media(max-width:900px){.advanced-filter{grid-template-columns:1fr 1fr}}
   </style>
 </head>
 <body>
 <div class="shell">
   <aside class="sidebar">
-    <div class="brand"><div class="brand-mark">WX</div><span>WeaveXDR</span></div>
+    <div class="brand"><img class="brand-mark" src="/assets/weavexdr.svg" alt=""><span>WeaveXDR</span></div>
     <div class="nav-label">SECURITY</div>
     <nav class="nav">
       <button class="active" data-nav="overview"><span class="nav-icon">◫</span><span>보안 개요</span></button>
       <button data-nav="incidents"><span class="nav-icon">⚑</span><span>사건</span></button>
       <button data-nav="investigation"><span class="nav-icon">⌕</span><span>조사</span></button>
+      <button data-nav="scan"><span class="nav-icon">◈</span><span>파일 검사</span></button>
       <button data-nav="settings"><span class="nav-icon">⚙</span><span>설정</span></button>
     </nav>
     <div class="sidebar-footer"><div class="device"><strong>개인용 워크스테이션</strong><span class="status-dot"></span><span id="side-status">API 확인 중</span></div><button class="exit-button" id="shutdown">WeaveXDR 종료</button></div>
@@ -274,6 +330,7 @@
           <div class="signal-cell review"><span>검토 필요</span><strong id="kpi-review">0</strong><small>증거 보강</small></div>
           <div class="signal-cell health"><span>보호 상태</span><strong id="kpi-health">확인 중</strong><small id="kpi-health-note">엔진 상태 점검 중</small></div>
         </div>
+        <div class="panel globe-panel"><div class="panel-title"><div><span class="eyebrow">RECENT ATTACK ORIGINS</span><h3>최근 공격 위치 3D 지구본</h3></div><span>수집된 사건·로컬 GeoIP 기준</span></div><div class="globe-stage" id="threat-globe"><canvas class="threat-globe-canvas" aria-label="최근 공격 위치를 회전하고 확대할 수 있는 3D 지구본"></canvas><div class="globe-caption" id="globe-caption"><strong>최근 공격 위치를 계산 중입니다.</strong><span>드래그하여 회전하고 휠로 확대·축소합니다.</span></div><div class="globe-controls"><button type="button" id="globe-zoom-out" aria-label="지구본 축소">−</button><button type="button" id="globe-reset" aria-label="지구본 시점 초기화">↻</button><button type="button" id="globe-zoom-in" aria-label="지구본 확대">＋</button></div></div><div class="globe-hotspots" id="globe-hotspots"></div></div>
         <div class="operations-grid">
           <div class="panel topology-panel"><div class="panel-title"><div><span class="eyebrow">LIVE CORRELATION</span><h3>공격 관계도</h3></div><div class="graph-legend"><span><i class="entity-dot external"></i>외부 IP</span><span><i class="entity-dot endpoint"></i>호스트</span><span><i class="entity-dot process"></i>프로세스</span><span><i class="entity-dot file"></i>파일</span></div></div><div class="topology-canvas" id="overview-topology"></div></div>
           <div class="panel geo-card"><div class="panel-title"><div><span class="eyebrow">NETWORK CONTEXT</span><h3>외부 연결 위치</h3></div><span>수집 이벤트 기준</span></div><div class="geo-map" id="overview-geo"></div><div class="origin-list" id="origin-list"></div></div>
@@ -284,7 +341,8 @@
       </section>
 
       <section class="page" id="page-incidents">
-        <div class="section-head"><div><h2>사건 큐</h2><p>위험도와 판정에 따라 사건을 정렬하고 조사 화면으로 이동합니다.</p></div><div class="toolbar"><input class="search" id="incident-search" placeholder="사건 ID, 규칙 또는 증거 검색"><select id="verdict-filter"><option value="all">모든 판정</option><option value="suspicious">고위험</option><option value="needs_review">검토 필요</option><option value="benign">정상</option></select><button class="primary" data-demo>안전한 데모 생성</button></div></div>
+        <div class="section-head"><div><h2>사건 큐</h2><p>위험도와 판정에 따라 사건을 정렬하고 조사 화면으로 이동합니다.</p></div><div class="toolbar"><input class="search" id="incident-search" aria-label="사건 검색" placeholder="사건 ID, 규칙 또는 증거 검색"><select id="verdict-filter" aria-label="판정 필터"><option value="all">모든 판정</option><option value="suspicious">고위험</option><option value="needs_review">검토 필요</option><option value="benign">정상</option></select><button class="primary" data-demo>안전한 데모 생성</button><button class="secondary" id="delete-demos">데모 일괄 삭제</button><button class="secondary" id="save-search">검색 저장</button></div></div>
+        <div class="advanced-filter"><select id="status-filter" aria-label="사건 상태 필터"><option value="all">모든 상태</option><option value="new">신규</option><option value="investigating">조사 중</option><option value="on_hold">보류</option><option value="resolved">해결</option><option value="false_positive">오탐</option></select><select id="risk-filter" aria-label="위험도 필터"><option value="">모든 위험도</option><option value="70">70 이상</option><option value="35">35 이상</option></select><input id="entity-filter" aria-label="엔터티 필터" placeholder="호스트·사용자·프로세스·IP"><input id="date-from" type="date" aria-label="시작 날짜"><select id="sort-filter" aria-label="사건 정렬"><option value="updated_desc">최신순</option><option value="updated_asc">오래된순</option><option value="risk_desc">위험도 높은순</option><option value="risk_asc">위험도 낮은순</option></select></div>
         <div class="panel table-panel"><div id="incident-table"></div></div>
       </section>
 
@@ -292,7 +350,7 @@
         <div id="investigation-empty" class="panel empty"><div class="empty-icon">⌕</div><strong>조사할 사건을 선택하세요.</strong><p>사건 큐에서 항목을 선택하면 판단 근거, 원본 이벤트, 공격 흐름과 권장 대응을 한 화면에서 확인할 수 있습니다.</p><button class="secondary" data-go="incidents">사건 큐 열기</button></div>
         <div id="investigation-content" hidden>
           <div class="card incident-hero"><div><span class="badge" id="investigation-badge"></span><h2 id="investigation-title"></h2><div class="incident-id" id="investigation-id"></div><div class="mitre-strip" id="mitre-strip"></div></div><div class="hero-score"><span class="muted">RISK SCORE</span><strong id="investigation-score">0</strong><span class="muted">/ 100</span></div></div>
-          <div class="investigation-shell"><div class="panel investigation-main" style="padding:0"><div class="tabs" id="investigation-tabs"><button class="active" data-tab="graph">공격 관계도</button><button data-tab="summary">요약</button><button data-tab="evidence">증거</button><button data-tab="attack">타임라인</button><button data-tab="response">대응</button></div><div class="tab-content" id="investigation-body"></div></div><aside class="side-stack"><div class="panel entity-inspector"><div class="panel-title"><div><span class="eyebrow">ENTITY</span><h3>선택 항목</h3></div></div><div id="entity-inspector"><p class="muted">관계도의 노드를 선택하면 세부 정보가 표시됩니다.</p></div></div><div class="panel"><div class="panel-title"><div><span class="eyebrow">GEO CONTEXT</span><h3>IP 위치</h3></div></div><div class="geo-map compact" id="investigation-geo"></div><div class="origin-list" id="investigation-origin"></div></div><div class="panel"><div class="panel-title"><h3>검증 상태</h3></div><div class="health-list" id="validation-list"></div></div><div class="panel"><div class="panel-title"><h3>데이터 출처</h3></div><div class="health-list" id="source-list"></div></div></aside></div>
+          <div class="investigation-shell"><div class="panel investigation-main" style="padding:0"><div class="tabs" id="investigation-tabs"><button class="active" data-tab="graph">공격 관계도</button><button data-tab="summary">요약</button><button data-tab="evidence">증거</button><button data-tab="attack">타임라인</button><button data-tab="response">대응</button><button data-tab="manage">관리</button></div><div class="tab-content" id="investigation-body"></div></div><aside class="side-stack"><div class="panel entity-inspector"><div class="panel-title"><div><span class="eyebrow">ENTITY</span><h3>선택 항목</h3></div></div><div id="entity-inspector"><p class="muted">관계도의 노드를 선택하면 세부 정보가 표시됩니다.</p></div></div><div class="panel"><div class="panel-title"><div><span class="eyebrow">GEO CONTEXT</span><h3>IP 위치</h3></div></div><div class="geo-map compact" id="investigation-geo"></div><div class="origin-list" id="investigation-origin"></div></div><div class="panel"><div class="panel-title"><h3>검증 상태</h3></div><div class="health-list" id="validation-list"></div></div><div class="panel"><div class="panel-title"><h3>데이터 출처</h3></div><div class="health-list" id="source-list"></div></div></aside></div>
         </div>
       </section>
 
@@ -302,7 +360,20 @@
           <div class="card setting-card"><h3>데이터 수집</h3><p>실시간 사건이 비어 있을 때 가장 먼저 확인할 항목입니다.</p><div class="setting-list" id="collector-settings"></div></div>
           <div class="card setting-card"><h3>탐지 엔진</h3><p>판정에 사용되는 규칙과 위험 점수 정책입니다.</p><div class="setting-list" id="policy-settings"></div></div>
           <div class="card setting-card"><h3>AI 모델</h3><p>로컬 모델 상태와 규칙 기반 안전 대체 경로입니다.</p><div class="setting-list" id="model-settings"></div></div>
+          <div class="card setting-card"><h3>앱 실행</h3><p>버전과 Windows 로그인 시 자동 실행을 관리합니다.</p><div class="setting-list" id="application-settings"></div><button class="secondary" id="startup-toggle">시작 프로그램 설정 변경</button></div>
+          <div class="card setting-card"><h3>대응 안전장치</h3><p>실제 대응은 명시적으로 활성화한 환경에서만 승인 후 실행됩니다.</p><div class="setting-list" id="response-settings"></div></div>
+          <div class="card setting-card"><h3>데이터 저장소</h3><p>로컬 사건 DB의 무결성, 여유 공간과 보존 정책을 확인합니다.</p><div class="setting-list" id="storage-settings"></div><div class="form-stack" style="margin-top:14px"><div class="field-group"><label for="storage-backup-select">복원할 검증 백업</label><select id="storage-backup-select"><option value="">백업 없음</option></select></div><div class="form-actions"><button class="secondary" id="storage-backup">백업 만들기</button><button class="secondary" id="storage-archive">만료 자료 보관</button><button class="secondary" id="storage-restore">다음 실행에 복원</button></div></div></div>
+          <div class="card setting-card"><h3>실행 자원</h3><p>WeaveXDR 프로세스와 저장 디스크의 현재 사용량입니다.</p><div class="setting-list" id="runtime-settings"></div></div>
           <div class="card setting-card"><h3>로컬 연결</h3><p>EXE가 현재 브라우저를 자동 인증합니다. 사용자가 토큰을 발급하거나 입력할 필요가 없습니다.</p><div class="setting-list"><div class="setting-row"><span>API 주소</span><strong id="local-api-address"></strong></div><div class="setting-row"><span>인증 방식</span><strong>EXE 자동 보안 세션</strong></div><div class="setting-row"><span>접근 범위</span><strong>이 PC만 허용</strong></div></div></div>
+          <div class="card setting-card"><h3>탐지 콘텐츠</h3><p>가져온 후보는 검증 후 비활성 상태로 확인합니다. 외부 평판 전송은 별도 동의 전에는 실행되지 않습니다.</p><div class="form-stack"><div class="field-group"><label for="sigma-payload">Sigma YAML 후보</label><textarea id="sigma-payload" placeholder="Sigma YAML을 붙여넣으세요"></textarea></div><div class="form-actions"><button class="secondary" id="sigma-import">Sigma 검증</button></div></div><div class="setting-list" id="content-status"></div></div>
+        </div>
+      </section>
+      <section class="page" id="page-scan">
+        <div class="section-head"><div><h2>파일 검사</h2><p>빠른·전체·사용자 지정 검사를 실행하고 진행 상태를 확인합니다.</p></div></div>
+        <div class="scan-grid">
+          <div class="card setting-card"><h3>새 검사</h3><p>Windows 선택창에서 검사할 파일이나 폴더를 고릅니다. 경로를 직접 입력할 필요가 없습니다.</p><div class="form-stack"><div class="field-group"><label for="scan-profile">검사 유형</label><select id="scan-profile"><option value="quick">빠른 검사</option><option value="full">전체 검사</option><option value="custom">사용자 지정</option></select></div><div class="field-group"><label id="scan-paths-label">선택한 검사 위치</label><div class="path-picker-actions"><button class="secondary" id="scan-files" type="button">파일 선택</button><button class="secondary" id="scan-folder" type="button">폴더 선택</button><button class="secondary" id="scan-paths-clear" type="button">선택 지우기</button></div><div class="selected-paths" id="scan-paths" role="list" aria-labelledby="scan-paths-label" aria-live="polite"></div></div><div class="form-actions"><button class="primary" id="scan-start">검사 시작</button><button class="secondary" id="scan-cancel">검사 취소</button></div></div><div class="scan-note"><strong>빠른 검사</strong><span>최근 30일의 실행 파일·스크립트·압축·Office 위험 형식을 우선 검사합니다. 경로를 선택하지 않으면 기본 검사 범위를 사용합니다.</span></div></div>
+          <div class="card setting-card"><h3>진행 상태</h3><p id="scan-summary">실행 중인 검사가 없습니다.</p><div class="scan-progress" aria-hidden="true"><div class="scan-progress-bar" id="scan-progress-bar"></div></div><div class="setting-list" id="scan-status"></div></div>
+          <div class="card setting-card quarantine-card"><h3>격리 목록</h3><p>복원 전에 다시 검사하고 사용자가 확인한 항목만 원래 위치로 되돌립니다.</p><div class="setting-list" id="quarantine-list"></div></div>
         </div>
       </section>
     </main>
@@ -314,9 +385,10 @@
 
 <script>
   let launchToken = new URLSearchParams(location.hash.slice(1)).get('token') || '';
-  const state = { token: '', incidents: [], incidentPageItems: [], incidentStats: {total:0,filtered_total:0,verdicts:{suspicious:0,needs_review:0,benign:0},daily:{}}, settings: null, status: null, selected: null, tab: 'graph', streaming: false, streamController: null, statusTimer: null, incidentRefreshTimer: null, filterTimer: null, graphViews: new Map(), overviewRenderKey: '', incidentPage: 1, incidentPageSize: 50 };
-  const pageInfo = { overview:['보안 개요','현재 PC의 탐지 상태와 주요 사건을 확인합니다.'], incidents:['사건','탐지된 사건을 필터링하고 우선순위에 따라 조사합니다.'], investigation:['조사','연결된 증거와 공격 흐름을 따라 사건을 분석합니다.'], settings:['설정','수집기, 탐지 정책, 모델과 연결 상태를 관리합니다.'] };
+  const state = { token: '', incidents: [], incidentPageItems: [], incidentStats: {total:0,filtered_total:0,verdicts:{suspicious:0,needs_review:0,benign:0},daily:{}}, settings: null, status: null, storageHealth:null, storageBackups:[], storageRecovery:null, quarantine:[], selected: null, scanJob:null, scanTimer:null, scanPaths:[], pathDialogOpen:false, globeView:null, tab: 'graph', streaming: false, streamController: null, statusTimer: null, incidentRefreshTimer: null, filterTimer: null, graphViews: new Map(), graphConfigs: new Map(), overviewRenderKey: '', incidentPage: 1, incidentPageSize: 50, graphLayout:'hierarchical', graphHiddenTypes:new Set(), graphRiskOnly:false, graphTimeIndex:null };
+  const pageInfo = { overview:['보안 개요','현재 PC의 탐지 상태와 주요 사건을 확인합니다.'], incidents:['사건','탐지된 사건을 필터링하고 우선순위에 따라 조사합니다.'], investigation:['조사','연결된 증거와 공격 흐름을 따라 사건을 분석합니다.'], scan:['파일 검사','수동 검사 진행 상태와 격리 항목을 관리합니다.'], settings:['설정','수집기, 탐지 정책, 모델과 연결 상태를 관리합니다.'] };
   const verdictLabel = { suspicious:'고위험', needs_review:'검토 필요', benign:'정상' };
+  const statusLabel = {new:'신규',investigating:'조사 중',on_hold:'보류',resolved:'해결',false_positive:'오탐'};
   const eventLabel = { process_start:'프로세스 시작', file_create:'파일 생성', network_connect:'네트워크 연결' };
   const actionLabel = { terminate_process:'프로세스 종료', quarantine_file:'파일 격리', block_network:'네트워크 차단', collect_additional_evidence:'추가 증거 수집' };
   const authHeaders = () => state.token ? ({ Authorization:`Bearer ${state.token}` }) : ({});
@@ -334,7 +406,7 @@
     // 원문 토큰은 HttpOnly 프로세스 세션으로 교환한 즉시 메모리와 주소에서 제거한다.
     state.token='';launchToken='';history.replaceState(null,'',location.pathname+location.search);
   }
-  function incidentFilterQuery(){const params=new URLSearchParams(),query=document.querySelector('#incident-search').value.trim(),verdict=document.querySelector('#verdict-filter').value;if(query)params.set('query',query);if(verdict!=='all')params.set('verdict',verdict);return params;}
+  function incidentFilterQuery(){const params=new URLSearchParams(),query=document.querySelector('#incident-search').value.trim(),verdict=document.querySelector('#verdict-filter').value,status=document.querySelector('#status-filter').value,risk=document.querySelector('#risk-filter').value,entity=document.querySelector('#entity-filter').value.trim(),dateFrom=document.querySelector('#date-from').value,sort=document.querySelector('#sort-filter').value;if(query)params.set('query',query);if(verdict!=='all')params.set('verdict',verdict);if(status!=='all')params.set('incident_status',status);if(risk)params.set('min_risk',risk);if(entity)params.set('entity',entity);if(dateFrom)params.set('date_from',new Date(`${dateFrom}T00:00:00Z`).toISOString());params.set('sort',sort);return params;}
   async function refreshIncidentData({updatedIncidentId=null,force=false}={}){
     const filterParams=incidentFilterQuery();
     // 전체 KPI·필터 건수와 개요 최신 5건을 페이지 데이터와 분리한다. 따라서
@@ -345,8 +417,8 @@
   }
   async function loadAll() {
     try {
-      [state.settings,state.status] = await Promise.all([api('/settings'),api('/status')]);await refreshIncidentData({force:true});
-      setConnected(true);renderStatus();renderSettings();if(!state.streaming)streamEvents();
+      [state.settings,state.status,state.storageHealth,state.storageBackups,state.storageRecovery,state.quarantine] = await Promise.all([api('/settings'),api('/status'),api('/storage/health').catch(()=>null),api('/storage/backups').catch(()=>[]),api('/storage/recovery').catch(()=>null),api('/quarantine')]);await refreshIncidentData({force:true});
+      setConnected(true);renderStatus();renderSettings();renderQuarantine();if(!state.streaming)streamEvents();
     } catch(error) { setConnected(false); toast(error.message); }
   }
   async function refreshStatus(){try{state.status=await api('/status');setConnected(true);renderStatus();renderSettings();}catch(error){setConnected(false);}}
@@ -421,6 +493,7 @@
         inbound?link(remote,process,'인바운드',true):link(process,remote,'네트워크',true);
       }
     });
+    const firstProcess=entities.find(entity=>entity.type==='process'&&!entity.key.startsWith('parent:'));if(firstProcess)firstProcess.marker='최초 실행';entities.forEach(entity=>{if(entity.key.startsWith('parent:'))entity.marker='진입점';else if(entity.type==='file')entity.marker='지속성 후보';else if(entity.type==='external')entity.marker=entity.fields.방향==='유입'?'진입점':'외부 통신';else if(entity.type==='process'&&/system|admin|runas|seDebug/i.test(`${entity.detail} ${JSON.stringify(entity.fields)}`))entity.marker='권한 상승';});
     return {entities,edges};
   }
 
@@ -431,16 +504,22 @@
     // 같은 단계에 IP·파일 노드가 몰려도 최소 세로 간격을 유지한다. 7개를 넘으면
     // 다음 보조 열로 넘겨 세로로 끝없이 길어지거나 박스가 겹치는 문제를 막는다.
     const rowsPerColumn=7,rowSpacing=76,columnSpacing=168,depthGap=24;let nextDepthX=28,usedRows=1;
-    [...groups.entries()].sort(([left],[right])=>left-right).forEach(([,items])=>{const columnCount=Math.ceil(items.length/rowsPerColumn);items.forEach((entity,index)=>{entity.x=nextDepthX+Math.floor(index/rowsPerColumn)*columnSpacing;entity.y=24+(index%rowsPerColumn)*rowSpacing;});nextDepthX+=columnCount*columnSpacing+depthGap;usedRows=Math.max(usedRows,Math.min(rowsPerColumn,items.length));});
+    if(interactive&&state.graphLayout==='radial'){
+      const centerX=450,centerY=245,radius=Math.max(150,entities.length*13);entities.forEach((entity,index)=>{const angle=(Math.PI*2*index/Math.max(1,entities.length))-Math.PI/2;entity.x=centerX+Math.cos(angle)*radius-71;entity.y=centerY+Math.sin(angle)*radius-29;});nextDepthX=900;usedRows=6;
+    }else if(interactive&&state.graphLayout==='timeline'){
+      entities.sort((a,b)=>a.depth-b.depth||a.title.localeCompare(b.title)).forEach((entity,index)=>{entity.x=30+index*174;entity.y=70+(index%2)*120;});nextDepthX=Math.max(900,30+entities.length*174);usedRows=4;
+    }else{
+      [...groups.entries()].sort(([left],[right])=>left-right).forEach(([,items])=>{const columnCount=Math.ceil(items.length/rowsPerColumn);items.forEach((entity,index)=>{entity.x=nextDepthX+Math.floor(index/rowsPerColumn)*columnSpacing;entity.y=24+(index%rowsPerColumn)*rowSpacing;});nextDepthX+=columnCount*columnSpacing+depthGap;usedRows=Math.max(usedRows,Math.min(rowsPerColumn,items.length));});
+    }
     // 조사 화면은 모든 노드를 한 번에 맞추며 글자를 축소하지 않는다. 읽을 수 있는
     // 크기를 유지하고 넓은 그래프는 사용자가 이동·확대해서 탐색하도록 한다.
-    const canvasWidth=Math.max(900,nextDepthX+10),canvasHeight=Math.max(380,usedRows*rowSpacing+30),viewportWidth=interactive?560:900,svg=svgElement('svg',{viewBox:`0 0 ${viewportWidth} ${canvasHeight}`,role:'img','aria-label':'드래그와 확대가 가능한 사건 엔티티 관계도'}),viewport=svgElement('g',{class:'graph-viewport'});
+    const canvasWidth=Math.max(900,nextDepthX+10),canvasHeight=Math.max(380,usedRows*rowSpacing+30),viewportWidth=interactive?Math.max(560,Math.round(container.clientWidth||560)):900,svg=svgElement('svg',{viewBox:`0 0 ${viewportWidth} ${canvasHeight}`,role:'img','aria-label':'드래그와 확대가 가능한 사건 엔티티 관계도'}),viewport=svgElement('g',{class:'graph-viewport'});
     container.style.height=`${Math.min(650,Math.max(overview?315:420,canvasHeight))}px`;
     const initialPositions=new Map(entities.map(entity=>[entity.key,{x:entity.x,y:entity.y}])),savedView=state.graphViews.get(viewKey);
     if(savedView){entities.forEach(entity=>{const saved=savedView.positions?.[entity.key];if(saved){entity.x=saved.x;entity.y=saved.y;}});}
     const initialScale=interactive?1:Math.max(.72,Math.min(1,860/canvasWidth)),transform={x:savedView?.x||0,y:savedView?.y||0,scale:savedView?.scale||initialScale};
-    const saveView=()=>state.graphViews.set(viewKey,{x:transform.x,y:transform.y,scale:transform.scale,positions:Object.fromEntries(entities.map(entity=>[entity.key,{x:entity.x,y:entity.y}]))});
-    const applyTransform=()=>{viewport.setAttribute('transform',`translate(${transform.x} ${transform.y}) scale(${transform.scale})`);zoomOutput.value=`${Math.round(transform.scale*100)}%`;saveView();};
+    const saveView=()=>state.graphViews.set(viewKey,{x:transform.x,y:transform.y,scale:transform.scale,positions:Object.fromEntries(entities.map(entity=>[entity.key,{x:entity.x,y:entity.y}]))});let minimapViewport=null;
+    const applyTransform=()=>{viewport.setAttribute('transform',`translate(${transform.x} ${transform.y}) scale(${transform.scale})`);zoomOutput.value=`${Math.round(transform.scale*100)}%`;if(minimapViewport){minimapViewport.setAttribute('x',String(-transform.x/transform.scale));minimapViewport.setAttribute('y',String(-transform.y/transform.scale));minimapViewport.setAttribute('width',String(viewportWidth/transform.scale));minimapViewport.setAttribute('height',String(canvasHeight/transform.scale));}saveView();};
     const updateEdges=()=>edges.forEach(edge=>{const startX=edge.from.x+142,startY=edge.from.y+29,endX=edge.to.x,endY=edge.to.y+29,midX=(startX+endX)/2;edge.path.setAttribute('d',`M ${startX} ${startY} C ${midX} ${startY}, ${midX} ${endY}, ${endX} ${endY}`);edge.labelNode.setAttribute('x',midX-16);edge.labelNode.setAttribute('y',(startY+endY)/2-5);});
     const defs=svgElement('defs'),marker=svgElement('marker',{id:`arrow-${overview?'overview':'detail'}`,viewBox:'0 0 10 10',refX:9,refY:5,markerWidth:5,markerHeight:5,orient:'auto-start-reverse'});marker.append(svgElement('path',{d:'M 0 0 L 10 5 L 0 10 z',fill:'#59636e'}));defs.append(marker);svg.append(defs,viewport);
     edges.forEach(edge=>{edge.path=svgElement('path',{class:`graph-edge${edge.alert?' alert':''}`,'marker-end':`url(#arrow-${overview?'overview':'detail'})`});edge.labelNode=svgText(edge.label,0,0,'graph-edge-label');viewport.append(edge.path,edge.labelNode);});
@@ -450,8 +529,8 @@
     // 변환해야 드래그한 노드가 커서에서 벗어나거나 다른 박스 위로 튀지 않는다.
     const viewPoint=event=>{const rect=svg.getBoundingClientRect();return{x:(event.clientX-rect.left)*viewportWidth/rect.width,y:(event.clientY-rect.top)*canvasHeight/rect.height};};
     const activate=entity=>{entities.forEach(entry=>entry.element.classList.toggle('active',entry===entity));interactive?renderEntityInspector(entity):selectIncident(item);};
-    entities.forEach(entity=>{const group=svgElement('g',{class:'graph-node',transform:`translate(${entity.x} ${entity.y})`,tabindex:'0',role:'button','aria-label':`${entity.type} ${entity.title}`}),tooltip=svgElement('title');tooltip.textContent=[entity.title,entity.detail].filter(Boolean).join('\n');entity.element=group;group.append(tooltip,svgElement('rect',{width:142,height:58}),svgElement('circle',{cx:13,cy:14,r:5,fill:colors[entity.type]||'#8f98a2'}),svgText(entity.type.toUpperCase(),24,17,'node-type'),svgText(fitGraphLabel(entity.title,118,'600 13px Segoe UI, sans-serif'),12,36,'node-title'),svgText(fitGraphLabel(entity.detail,118,'10.5px Segoe UI, sans-serif'),12,50,'node-detail'));group.addEventListener('click',()=>{if(!moved)activate(entity);moved=false;});group.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();activate(entity);}});viewport.append(group);});
-    const controls=node('div','canvas-controls'),zoomOut=node('button','','−'),zoomOutput=document.createElement('output'),zoomIn=node('button','','+'),reset=node('button','','↺');zoomOut.title='축소';zoomIn.title='확대';reset.title='위치와 배율 초기화';controls.append(zoomOut,zoomOutput,zoomIn,reset);
+    entities.forEach(entity=>{const highRisk=edges.some(edge=>edge.alert&&(edge.from===entity||edge.to===entity)),group=svgElement('g',{class:`graph-node${state.graphHiddenTypes.has(entity.type)?' hidden-type':''}${state.graphRiskOnly&&!highRisk?' risk-dim':''}`,transform:`translate(${entity.x} ${entity.y})`,tabindex:'0',role:'button','aria-label':`${entity.type} ${entity.title}`}),tooltip=svgElement('title');tooltip.textContent=[entity.title,entity.detail].filter(Boolean).join('\n');entity.element=group;group.append(tooltip,svgElement('rect',{width:142,height:58}),svgElement('circle',{cx:13,cy:14,r:5,fill:colors[entity.type]||'#8f98a2'}),svgText(entity.type.toUpperCase(),24,17,'node-type'),svgText(fitGraphLabel(entity.title,118,'600 13px Segoe UI, sans-serif'),12,36,'node-title'),svgText(fitGraphLabel(entity.detail,118,'10.5px Segoe UI, sans-serif'),12,50,'node-detail'));if(highRisk)group.append(svgText('▲',125,16,'attack-marker'));group.addEventListener('click',()=>{if(!moved)activate(entity);moved=false;});group.addEventListener('contextmenu',event=>{event.preventDefault();showEntityContextMenu(event,entity);});group.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();activate(entity);}else if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)){event.preventDefault();entity.x+=event.key==='ArrowLeft'?-10:event.key==='ArrowRight'?10:0;entity.y+=event.key==='ArrowUp'?-10:event.key==='ArrowDown'?10:0;group.setAttribute('transform',`translate(${entity.x} ${entity.y})`);updateEdges();saveView();}});viewport.append(group);});
+    const controls=node('div','canvas-controls'),zoomOut=node('button','','−'),zoomOutput=document.createElement('output'),zoomIn=node('button','','+'),reset=node('button','','↺');zoomOut.title='축소';zoomIn.title='확대';reset.title='위치와 배율 초기화';controls.append(zoomOut,zoomOutput,zoomIn,reset);if(interactive)[['process','프로세스'],['file','파일'],['external','외부 IP']].forEach(([type,label])=>{const toggle=node('button','type-toggle',`${state.graphHiddenTypes.has(type)?'+':'−'} ${label}`);toggle.title=`${label} 유형 접기/펼치`;toggle.onclick=()=>{state.graphHiddenTypes.has(type)?state.graphHiddenTypes.delete(type):state.graphHiddenTypes.add(type);persistGraphConfig(item);renderInvestigationTab(item);};controls.append(toggle);});
     const zoomAt=(factor,focus={x:viewportWidth/2,y:canvasHeight/2})=>{const next=Math.min(2.4,Math.max(.45,transform.scale*factor)),ratio=next/transform.scale;transform.x=focus.x-(focus.x-transform.x)*ratio;transform.y=focus.y-(focus.y-transform.y)*ratio;transform.scale=next;applyTransform();};
     const resetView=()=>{transform.x=0;transform.y=0;transform.scale=initialScale;entities.forEach(entity=>{const initial=initialPositions.get(entity.key);entity.x=initial.x;entity.y=initial.y;entity.element.setAttribute('transform',`translate(${entity.x} ${entity.y})`);});updateEdges();applyTransform();};
     zoomOut.onclick=()=>zoomAt(.82);zoomIn.onclick=()=>zoomAt(1.22);reset.onclick=resetView;
@@ -462,36 +541,76 @@
     const controller={
       search(query){const term=query.trim().toLowerCase();let first=null;entities.forEach(entity=>{const match=!term||`${entity.title} ${entity.detail} ${JSON.stringify(entity.fields)}`.toLowerCase().includes(term);entity.element.classList.toggle('dimmed',!match);if(term&&match&&!first)first=entity;});if(first)activate(first);},
       focusForEvent(event){const candidates=[event.process_guid&&`process:${event.process_guid}`,event.file_path&&`file:${event.file_path}`,event.destination_ip&&`ip:${event.destination_ip}`,event.source_ip&&`ip:${event.source_ip}`].filter(Boolean);const entity=entities.find(entry=>candidates.includes(entry.key));if(entity){activate(entity);transform.x=450-(entity.x+71)*transform.scale;transform.y=190-(entity.y+29)*transform.scale;applyTransform();}},
-      reset:resetView
+      reset:resetView,
+      export(format){const name=`weavexdr-${item.incident_id}`;if(format==='json'){downloadBlob(`${name}.json`,new Blob([JSON.stringify({entities:entities.map(({element,...entry})=>entry),edges:edges.map(edge=>({from:edge.from.key,to:edge.to.key,label:edge.label,alert:edge.alert}))},null,2)],{type:'application/json'}));return;}const source=new XMLSerializer().serializeToString(svg);if(format==='svg'){downloadBlob(`${name}.svg`,new Blob([source],{type:'image/svg+xml'}));return;}const image=new Image(),url=URL.createObjectURL(new Blob([source],{type:'image/svg+xml'}));image.onload=()=>{const canvas=document.createElement('canvas');canvas.width=viewportWidth*2;canvas.height=canvasHeight*2;const context=canvas.getContext('2d');context.fillStyle='#0b0f13';context.fillRect(0,0,canvas.width,canvas.height);context.drawImage(image,0,0,canvas.width,canvas.height);canvas.toBlob(blob=>blob&&downloadBlob(`${name}.png`,blob));URL.revokeObjectURL(url);};image.src=url;}
     };
-    container.append(svg,controls);updateEdges();applyTransform();if(interactive&&entities.length)activate(entities.find(entity=>entity.type==='external')||entities[0]);return controller;
+    if(interactive&&state.graphLayout==='timeline'){const slider=node('input','timeline-slider');slider.type='range';slider.min='1';slider.max=String(Math.max(1,entities.length));slider.value=String(state.graphTimeIndex||entities.length);slider.oninput=()=>{state.graphTimeIndex=Number(slider.value);entities.forEach((entity,index)=>entity.element.style.display=index<state.graphTimeIndex?'':'none');};controls.append(slider);}
+    const minimap=svgElement('svg',{class:'graph-minimap',viewBox:`0 0 ${canvasWidth} ${canvasHeight}`});entities.forEach(entity=>minimap.append(svgElement('rect',{x:entity.x,y:entity.y,width:142,height:58})));minimapViewport=svgElement('rect',{class:'mini-view',x:0,y:0,width:viewportWidth,height:canvasHeight});minimap.append(minimapViewport);
+    interactive?container.append(svg,minimap,controls):container.append(svg,controls);updateEdges();applyTransform();if(interactive&&entities.length)activate(entities.find(entity=>entity.type==='external')||entities[0]);return controller;
   }
 
-  function renderEntityInspector(entity){const inspector=document.querySelector('#entity-inspector');if(!inspector||!entity)return;const details=node('div','entity-details');details.append(node('span','entity-kind',entity.type.toUpperCase()),node('h4','',entity.title));Object.entries(entity.fields||{}).forEach(([label,value])=>{const field=node('div','entity-field');field.append(node('span','',label),node('strong','',value));details.append(field);});inspector.replaceChildren(details);}
+  function downloadBlob(name,blob){const link=document.createElement('a');link.href=URL.createObjectURL(blob);link.download=name;link.click();setTimeout(()=>URL.revokeObjectURL(link.href),1000);}
+  function showEntityContextMenu(event,entity){document.querySelector('.context-menu')?.remove();const menu=node('div','context-menu'),history=node('button','','이 엔터티의 과거 사건 조회');history.onclick=()=>{document.querySelector('#entity-filter').value=entity.title;navigate('incidents');scheduleFilteredRefresh();menu.remove();};menu.append(history);menu.style.left=`${event.clientX}px`;menu.style.top=`${event.clientY}px`;document.body.append(menu);setTimeout(()=>document.addEventListener('click',()=>menu.remove(),{once:true}),0);}
+
+  function renderEntityInspector(entity){const inspector=document.querySelector('#entity-inspector');if(!inspector||!entity)return;const details=node('div','entity-details');details.append(node('span','entity-kind',entity.type.toUpperCase()),node('h4','',entity.title));if(entity.marker)details.append(settingRow('공격 단계',entity.marker));Object.entries(entity.fields||{}).forEach(([label,value])=>{const field=node('div','entity-field');field.append(node('span','',label),node('strong','',value));details.append(field);});inspector.replaceChildren(details);}
 
   function geoForIp(ip){
     const known={
-      '8.8.8.8':{country:'미국',region:'California · Google DNS',x:68,y:76},
-      '8.8.4.4':{country:'미국',region:'California · Google DNS',x:68,y:76},
-      '1.1.1.1':{country:'Anycast',region:'Cloudflare · 위치 가변',x:95,y:62}
+      '8.8.8.8':{country:'미국',region:'California · Google DNS',longitude:-122.1,latitude:37.4},
+      '8.8.4.4':{country:'미국',region:'California · Google DNS',longitude:-122.1,latitude:37.4},
+      '9.9.9.9':{country:'미국',region:'New York · Quad9',longitude:-74.0,latitude:40.7},
+      '208.67.222.222':{country:'미국',region:'California · OpenDNS',longitude:-122.4,latitude:37.8},
+      '1.1.1.1':{country:'Anycast',region:'Cloudflare · 전 세계 분산',plot:false}
     };
-    if(known[ip])return known[ip];if(/^(10\.|127\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(ip||''))return {country:'내부망',region:'Private address',x:292,y:70};
-    const first=Number((ip||'0').split('.')[0])||0;return {country:'국가 확인 필요',region:'GeoIP DB 미연동',x:35+(first*7)%255,y:35+(first*11)%95};
+    if(known[ip])return known[ip];if(/^(10\.|127\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(ip||''))return {country:'내부망',region:'Private address',plot:false};
+    // GeoIP 데이터가 없는 주소를 임의 국가에 찍으면 분석을 오도하므로 목록에만 명시한다.
+    return {country:'위치 미확인',region:'로컬 GeoIP 데이터 필요',plot:false};
   }
   function networkContexts(item){return (item?.source_events||[]).filter(event=>event.event_type==='network_connect').map(event=>{const inbound=event.initiated===false&&event.source_ip;const ip=inbound?event.source_ip:event.destination_ip;return {ip,port:inbound?event.source_port:event.destination_port,direction:inbound?'유입':'외부 연결',...geoForIp(ip)};});}
   function renderGeoMap(mapContainer,listContainer,item){
-    mapContainer.replaceChildren();listContainer.replaceChildren();const contexts=networkContexts(item),svg=svgElement('svg',{viewBox:'0 0 360 180',role:'img','aria-label':'외부 IP 국가 위치 지도'});
+    mapContainer.replaceChildren();listContainer.replaceChildren();const contexts=networkContexts(item),svg=svgElement('svg',{viewBox:'0 0 360 180',role:'img','aria-label':'외부 IP 국가 위치 지도'}),project=(longitude,latitude)=>({x:longitude+180,y:90-latitude});
     for(let x=30;x<360;x+=30)svg.append(svgElement('line',{x1:x,y1:0,x2:x,y2:180,class:'map-grid'}));for(let y=30;y<180;y+=30)svg.append(svgElement('line',{x1:0,y1:y,x2:360,y2:y,class:'map-grid'}));
-    ['M22 50 L55 28 91 34 105 55 88 76 67 72 55 102 37 92Z','M116 35 L162 25 196 37 202 57 181 68 166 104 143 128 132 90 105 73Z','M204 32 L248 27 286 38 318 55 307 76 276 72 258 91 230 77 211 59Z','M279 109 L316 105 334 128 319 148 288 145 270 128Z'].forEach(d=>svg.append(svgElement('path',{d,class:'land'})));
-    const home={x:292,y:70};svg.append(svgElement('circle',{cx:home.x,cy:home.y,r:4,class:'map-home'}),svgText('LOCAL',home.x+7,home.y-6,'map-label'));
-    contexts.slice(0,4).forEach(context=>{const midX=(home.x+context.x)/2,controlY=Math.min(home.y,context.y)-35;svg.append(svgElement('path',{d:`M ${home.x} ${home.y} Q ${midX} ${controlY} ${context.x} ${context.y}`,class:'map-arc'}),svgElement('circle',{cx:context.x,cy:context.y,r:4,class:'map-point'}),svgText(context.country,context.x+6,context.y-6,'map-label'));const row=node('div','origin-row');row.append(node('i'),(()=>{const copy=node('div');copy.append(node('strong','',`${context.country} · ${context.direction}`),node('span','',context.region));return copy;})(),node('code','',`${context.ip}:${context.port||'-'}`));listContainer.append(row);});
+    // 직접 만든 대륙 도형 대신 Natural Earth 국가 경계를 번들 자산으로 사용한다.
+    svg.append(svgElement('image',{href:'/assets/world-map.svg',x:0,y:0,width:360,height:180,class:'world-map-base'}));
+    [['미국',42,43,59,49],['브라질',103,126,96,116],['영국',158,35,178,43],['인도',244,94,260,79],['일본',326,73,321,57],['호주',298,157,307,132]].forEach(([label,x,y,px,py])=>svg.append(svgElement('line',{x1:px,y1:py,x2:x,y2:y-3,class:'map-leader'}),svgText(label,x,y,'map-country')));svg.append(svgText('태평양',18,105,'map-ocean-label'),svgText('대서양',128,91,'map-ocean-label'),svgText('인도양',225,120,'map-ocean-label'));
+    const home=project(126.98,37.57);svg.append(svgElement('circle',{cx:home.x,cy:home.y,r:4,class:'map-home'}),svgText('대한민국 · 서울',home.x-44,home.y-9,'map-label'));
+    contexts.slice(0,4).forEach(context=>{if(context.plot!==false){const point=project(context.longitude,context.latitude),midX=(home.x+point.x)/2,controlY=Math.min(home.y,point.y)-28;svg.append(svgElement('path',{d:`M ${home.x} ${home.y} Q ${midX} ${controlY} ${point.x} ${point.y}`,class:'map-arc'}),svgElement('circle',{cx:point.x,cy:point.y,r:4,class:'map-point'}),svgText(context.country,point.x+6,point.y-6,'map-label'));}const row=node('div','origin-row');row.append(node('i'),(()=>{const copy=node('div');copy.append(node('strong','',`${context.country} · ${context.direction}`),node('span','',context.region));return copy;})(),node('code','',`${context.ip}:${context.port||'-'}`));listContainer.append(row);});
     if(!contexts.length){svg.append(svgText('네트워크 이벤트 없음',121,160,'map-label'));const row=node('div','origin-row');row.append(node('i'),(()=>{const copy=node('div');copy.append(node('strong','','아직 외부 연결 증거 없음'),node('span','','Sysmon 네트워크 이벤트 수집 대기'));return copy;})(),node('code','','-'));listContainer.append(row);}mapContainer.append(svg);
   }
-  function renderOverviewIntel(){const item=state.incidents[0]||null;renderAttackGraph(document.querySelector('#overview-topology'),item,{overview:true});renderGeoMap(document.querySelector('#overview-geo'),document.querySelector('#origin-list'),item);}
+  function recentAttackHotspots(incidents){const grouped=new Map();incidents.filter(item=>item.verdict!=='benign').forEach(item=>networkContexts(item).forEach(context=>{if(context.plot===false||!Number.isFinite(context.longitude)||!Number.isFinite(context.latitude))return;const key=`${context.country}|${context.longitude}|${context.latitude}`,current=grouped.get(key)||{...context,count:0};current.count+=1;grouped.set(key,current);}));return [...grouped.values()].sort((a,b)=>b.count-a.count).slice(0,12);}
+  function createThreatGlobe(container){
+    const canvas=container.querySelector('canvas'),context=canvas.getContext('2d',{alpha:false}),caption=document.querySelector('#globe-caption'),hotspotList=document.querySelector('#globe-hotspots'),textureCanvas=document.createElement('canvas'),textureContext=textureCanvas.getContext('2d',{willReadFrequently:true}),textureImage=new Image();
+    let texture=null,hotspots=[],longitude=126.98*Math.PI/180,latitude=18*Math.PI/180,zoom=1,dragging=false,lastPointer=null,lastFrame=0,markerPositions=[];
+    textureCanvas.width=720;textureCanvas.height=360;
+    const clamp=(value,min,max)=>Math.max(min,Math.min(max,value));
+    function resize(){const bounds=container.getBoundingClientRect(),ratio=Math.min(1.25,window.devicePixelRatio||1);canvas.width=Math.max(320,Math.min(800,Math.round(bounds.width*ratio)));canvas.height=Math.max(260,Math.min(420,Math.round(parseFloat(getComputedStyle(canvas).height)*ratio)));draw(performance.now());}
+    function setCaption(hotspot=null){caption.replaceChildren(node('strong','',hotspot?`${hotspot.country} · 최근 ${hotspot.count}건`:hotspots.length?`위치 확인된 최근 공격 ${hotspots.reduce((sum,item)=>sum+item.count,0)}건`:'위치 확인된 최근 공격 없음'),node('span','',hotspot?`${hotspot.region} · ${hotspot.direction}`:'드래그하여 회전하고 휠로 확대·축소합니다.'));}
+    function renderHotspotList(){hotspotList.replaceChildren();hotspots.slice(0,6).forEach(item=>{const chip=node('div','globe-hotspot');chip.append(node('i'),node('span','',item.country),node('strong','',`${item.count}건`));hotspotList.append(chip);});if(!hotspots.length)hotspotList.append(node('span','muted','GeoIP 위치가 확인된 고위험·검토 필요 네트워크 사건이 없습니다.'));setCaption();}
+    function draw(now=performance.now()){
+      const width=canvas.width,height=canvas.height,radius=Math.min(width*.28,height*.43)*zoom,cx=width/2,cy=height/2,cosCenter=Math.cos(latitude),sinCenter=Math.sin(latitude),frame=context.createImageData(width,height),pixels=frame.data,source=texture?.data,sourceWidth=texture?.width||0,sourceHeight=texture?.height||0;
+      for(let py=0;py<height;py+=1){const ny=(cy-py)/radius;for(let px=0;px<width;px+=1){const nx=(px-cx)/radius,rho2=nx*nx+ny*ny,index=(py*width+px)*4;if(rho2>1){pixels[index]=5;pixels[index+1]=11;pixels[index+2]=18;pixels[index+3]=255;continue;}const z=Math.sqrt(1-rho2),worldY=ny*cosCenter+z*sinCenter,lat=Math.asin(clamp(worldY,-1,1)),lon=longitude+Math.atan2(nx,z*cosCenter-ny*sinCenter),u=((lon+Math.PI)/(Math.PI*2)%1+1)%1,v=clamp((Math.PI/2-lat)/Math.PI,0,1),sourceIndex=(Math.floor(v*(sourceHeight-1))*sourceWidth+Math.floor(u*(sourceWidth-1)))*4,land=source&&source[sourceIndex+3]>18,light=.56+.44*z;let r=land?40:8,g=land?58:37,b=land?69:60;if(land&&source){r=source[sourceIndex];g=source[sourceIndex+1];b=source[sourceIndex+2];}pixels[index]=Math.round(r*light);pixels[index+1]=Math.round(g*light);pixels[index+2]=Math.round(b*light);pixels[index+3]=255;}}
+      context.putImageData(frame,0,0);const atmosphere=context.createRadialGradient(cx-radius*.28,cy-radius*.32,radius*.08,cx,cy,radius);atmosphere.addColorStop(0,'rgba(73,174,224,.06)');atmosphere.addColorStop(.82,'rgba(33,122,174,.05)');atmosphere.addColorStop(1,'rgba(75,188,238,.28)');context.beginPath();context.arc(cx,cy,radius,0,Math.PI*2);context.fillStyle=atmosphere;context.fill();context.strokeStyle='rgba(111,205,241,.55)';context.lineWidth=Math.max(1,canvas.width/900);context.stroke();
+      markerPositions=[];hotspots.forEach(item=>{const phi=item.latitude*Math.PI/180,delta=item.longitude*Math.PI/180-longitude,cosPhi=Math.cos(phi),z=Math.sin(phi)*sinCenter+cosPhi*Math.cos(delta)*cosCenter;if(z<=0)return;const x=cx+radius*cosPhi*Math.sin(delta),y=cy-radius*(Math.sin(phi)*cosCenter-cosPhi*Math.cos(delta)*sinCenter),pulse=1+Math.sin(now/380)*.18,markerRadius=(4+Math.min(8,item.count*1.4))*Math.min(1.35,zoom)*pulse;markerPositions.push({x,y,item});context.beginPath();context.arc(x,y,markerRadius*2.2,0,Math.PI*2);context.fillStyle='rgba(255,72,96,.16)';context.fill();context.beginPath();context.arc(x,y,markerRadius,0,Math.PI*2);context.fillStyle='#ff5d73';context.fill();context.strokeStyle='#ffd0d7';context.lineWidth=1.4;context.stroke();});
+    }
+    function animate(now){
+      const overviewActive=container.closest('#page-overview')?.classList.contains('active');
+      // 숨겨진 화면에서는 큰 지도 텍스처를 다시 투영하지 않아 백그라운드 CPU 사용을 억제한다.
+      if(overviewActive&&document.visibilityState==='visible'&&!dragging&&!matchMedia('(prefers-reduced-motion: reduce)').matches&&now-lastFrame>120){longitude+=.0024;draw(now);lastFrame=now;}
+      requestAnimationFrame(animate);
+    }
+    textureImage.onload=()=>{textureContext.clearRect(0,0,720,360);textureContext.drawImage(textureImage,0,0,720,360);texture=textureContext.getImageData(0,0,720,360);draw();};textureImage.src='/assets/world-map.svg';
+    container.addEventListener('pointerdown',event=>{dragging=true;lastPointer={x:event.clientX,y:event.clientY};container.classList.add('dragging');container.setPointerCapture(event.pointerId);});
+    container.addEventListener('pointermove',event=>{if(dragging&&lastPointer){longitude-=(event.clientX-lastPointer.x)*.008;latitude=clamp(latitude+(event.clientY-lastPointer.y)*.006,-1.15,1.15);lastPointer={x:event.clientX,y:event.clientY};draw();return;}const bounds=canvas.getBoundingClientRect(),scaleX=canvas.width/bounds.width,scaleY=canvas.height/bounds.height,x=(event.clientX-bounds.left)*scaleX,y=(event.clientY-bounds.top)*scaleY,nearest=markerPositions.find(marker=>Math.hypot(marker.x-x,marker.y-y)<16*Math.max(scaleX,scaleY));setCaption(nearest?.item||null);});
+    container.addEventListener('pointerup',event=>{dragging=false;lastPointer=null;container.classList.remove('dragging');container.releasePointerCapture(event.pointerId);});container.addEventListener('pointercancel',()=>{dragging=false;lastPointer=null;container.classList.remove('dragging');});container.addEventListener('pointerleave',()=>{if(!dragging)setCaption();});container.addEventListener('wheel',event=>{event.preventDefault();zoom=clamp(zoom*(event.deltaY>0?.9:1.1),.72,1.55);draw();},{passive:false});
+    document.querySelector('#globe-zoom-in').onclick=()=>{zoom=clamp(zoom*1.15,.72,1.55);draw();};document.querySelector('#globe-zoom-out').onclick=()=>{zoom=clamp(zoom/1.15,.72,1.55);draw();};document.querySelector('#globe-reset').onclick=()=>{longitude=126.98*Math.PI/180;latitude=18*Math.PI/180;zoom=1;draw();};
+    new ResizeObserver(resize).observe(container);requestAnimationFrame(animate);resize();
+    return {update(incidents){hotspots=recentAttackHotspots(incidents);renderHotspotList();draw();},diagnostics(){return {longitude,latitude,zoom,hotspots:hotspots.length,textureLoaded:Boolean(texture)};}};
+  }
+  function renderOverviewIntel(){const item=state.incidents[0]||null;renderAttackGraph(document.querySelector('#overview-topology'),item,{overview:true});renderGeoMap(document.querySelector('#overview-geo'),document.querySelector('#origin-list'),item);state.globeView ||= createThreatGlobe(document.querySelector('#threat-globe'));state.globeView.update(state.incidents);}
   function incidentTable(items, compact=false) {
     if(!items.length){const empty=node('div','empty');const icon=node('div','empty-icon','⌁');const title=node('strong','',state.status?.collector?.state==='running'?'탐지된 사건이 없습니다.':'아직 수집된 사건이 없습니다.');const copy=node('p','',state.status?.collector?.state==='running'?'현재까지 고위험 행위가 발견되지 않았습니다.':'실시간 수집기를 설정하거나 안전한 데모 사건으로 조사 흐름을 먼저 확인하세요.');const button=node('button','primary','안전한 데모 사건 생성');button.dataset.demo='';empty.append(icon,title,copy,button);return empty;}
     const table=node('table');const head=node('thead');const headRow=node('tr');['위험도','사건','판정','주요 증거','발생 시각'].forEach(label=>headRow.append(node('th','',label)));head.append(headRow);const body=node('tbody');
-    items.slice(0,compact?5:items.length).forEach(item=>{const row=node('tr');row.onclick=()=>selectIncident(item);const score=node('td');const scoreText=node('span',`score ${scoreClass(item.risk_score)}`,item.risk_score);score.append(scoreText);const name=node('td');name.append(node('div','incident-name',incidentTitle(item)),node('div','muted',item.incident_id));const verdict=node('td');verdict.append(node('span',`badge ${item.verdict}`,verdictLabel[item.verdict]||item.verdict));const evidence=node('td','',item.findings?.[0]?findingLabel(item.findings[0]):item.evidence?.[0]||'분석 근거 없음');const time=node('td','muted',formatTime(latestTimestamp(item)));row.append(score,name,verdict,evidence,time);body.append(row);});table.append(head,body);return table;
+    items.slice(0,compact?5:items.length).forEach(item=>{const row=node('tr');row.onclick=()=>selectIncident(item);const score=node('td');const scoreText=node('span',`score ${scoreClass(item.risk_score)}`,item.risk_score);score.append(scoreText);const name=node('td'),title=node('div','incident-name',incidentTitle(item));if(item.management?.is_demo)title.append(node('span','demo-badge','DEMO'));if(item.management?.bookmarked)title.append(node('span','bookmark-badge','★'));name.append(title,node('div','muted',`${item.incident_id} · ${statusLabel[item.management?.status||'new']}`));const verdict=node('td');verdict.append(node('span',`badge ${item.verdict}`,verdictLabel[item.verdict]||item.verdict));const evidence=node('td','',item.findings?.[0]?findingLabel(item.findings[0]):item.evidence?.[0]||'분석 근거 없음');const time=node('td','muted',formatTime(latestTimestamp(item)));row.append(score,name,verdict,evidence,time);body.append(row);});table.append(head,body);return table;
   }
   function incidentPagination(totalItems) {
     const pageCount=Math.max(1,Math.ceil(totalItems/state.incidentPageSize));state.incidentPage=Math.min(state.incidentPage,pageCount);
@@ -504,12 +623,21 @@
     const full=document.querySelector('#incident-table');full.replaceChildren(incidentTable(state.incidentPageItems,false),incidentPagination(state.incidentStats.filtered_total||0));bindDemoButtons();
   }
   function renderSettings() {
-    if(!state.settings||!state.status)return; const collectorStatus=state.status.collector; const collector=document.querySelector('#collector-settings');const running=collectorStatus.state==='running',permissionError=(collectorStatus.label||'').includes('권한 부족');const userAction=running?'필요 없음 · 자동 수집 중':permissionError?'개요 화면의 수집 권한 설정 버튼 사용':'Sysmon 설치 및 로그 상태 확인';collector.replaceChildren(settingRow('상태',collectorStatus.label||collectorStatus.state),settingRow('수집 소스',(collectorStatus.sources||[]).join(', ')||'연결된 소스 없음'),settingRow('처리 이벤트',`${collectorStatus.processed_events||0}개`),settingRow('마지막 수집',collectorStatus.last_event_at?formatTime(collectorStatus.last_event_at):'아직 없음'),settingRow('사용자 조치',userAction));
+    if(!state.settings||!state.status)return; const collectorStatus=state.status.collector; const collector=document.querySelector('#collector-settings');const running=collectorStatus.state==='running',permissionError=(collectorStatus.label||'').includes('권한 부족');const userAction=running?'필요 없음 · 자동 수집 중':permissionError?'개요 화면의 수집 권한 설정 버튼 사용':'Sysmon 설치 및 로그 상태 확인';collector.replaceChildren(settingRow('상태',collectorStatus.label||collectorStatus.state),settingRow('수집 소스',(collectorStatus.sources||[]).join(', ')||'연결된 소스 없음'),settingRow('처리 이벤트',`${collectorStatus.processed_events||0}개`),settingRow('마지막 수집',collectorStatus.last_event_at?formatTime(collectorStatus.last_event_at):'아직 없음'),settingRow('사용자 조치',userAction));Object.entries(collectorStatus.source_health||{}).forEach(([name,health])=>{const nested=health.source_health||{},loss=Object.values(nested).reduce((sum,item)=>sum+(item.loss_count||0),0),errors=Object.values(nested).filter(item=>item.state==='error').length;collector.append(settingRow(name,`${health.state} · 손실 ${loss} · 오류 ${errors}`));});
     const policy=document.querySelector('#policy-settings');policy.replaceChildren(settingRow('탐지 규칙',state.settings.detection_rule_version),settingRow('위험 점수 정책',state.settings.risk_policy_version),settingRow('허용 목록 정책',state.settings.allowlist_policy_version),settingRow('허용 항목',`${state.settings.allowlist_entries.length}개`));
     const model=document.querySelector('#model-settings');model.replaceChildren(settingRow('제공자',state.status.model.provider||'rule_based'),settingRow('상태',state.status.model.available?'사용 가능':'대체 모델 사용'),settingRow('안전 대체','규칙 기반 판정'),settingRow('실제 대응',state.status.active_response?'활성화':'기본 비활성화'));
+    const app=document.querySelector('#application-settings');if(app)app.replaceChildren(settingRow('버전',state.settings.application?.version||'-'),settingRow('빌드 날짜',state.settings.application?.build_date||'-'),settingRow('시작 프로그램',state.settings.startup_enabled?'사용':'사용 안 함'));
+    const capabilities=state.status.response_capabilities||{},response=document.querySelector('#response-settings');if(response)response.replaceChildren(settingRow('실제 대응',state.status.active_response?'활성화 · 매 작업 승인':'기본 비활성화'),settingRow('프로세스 종료',capabilities.process_tree?'하위 트리 재검증':'사용 안 함'),settingRow('복구 가능 조치',(capabilities.reversible_actions||[]).length?'격리 · 네트워크 차단':'없음'),settingRow('플레이북',capabilities.playbooks?'단계별 개별 승인':'사용 안 함'));
+    const storage=document.querySelector('#storage-settings'),health=state.storageHealth;if(storage&&health)storage.replaceChildren(settingRow('무결성',health.integrity_ok?'정상':'점검 필요'),settingRow('DB 크기',formatBytes(health.database_bytes)),settingRow('디스크 여유',formatBytes(health.free_disk_bytes)),settingRow('보존 기간',`${health.retention_days}일`),settingRow('스키마',`v${health.schema_version}`));
+    const backupSelect=document.querySelector('#storage-backup-select');if(backupSelect){backupSelect.replaceChildren();const empty=node('option','','백업 선택');empty.value='';backupSelect.append(empty);(state.storageBackups||[]).forEach(item=>{const option=node('option','',`${item.file_name} · ${formatBytes(item.size_bytes)} · ${item.integrity_ok?'정상':'손상'}`);option.value=item.file_name;option.disabled=!item.integrity_ok;backupSelect.append(option);});}if(storage&&state.storageRecovery?.pending_restore)storage.append(settingRow('복원 예약','다음 일반 실행에서 적용'));
+    const runtime=document.querySelector('#runtime-settings'),resources=state.status.resources,recovery=state.status.recovery||{};if(runtime)runtime.replaceChildren(settingRow('CPU',resources?`${resources.cpu_percent}%`:'수집 안 됨'),settingRow('메모리',resources?formatBytes(resources.memory_bytes):'수집 안 됨'),settingRow('디스크 여유',resources?formatBytes(resources.disk_free_bytes):'수집 안 됨'),settingRow('전원 모드',resources?.power_mode==='low_power'?'저전력 · 파일 감시 간격 완화':'균형'),settingRow('배터리',resources?.battery_percent==null?'확인 불가':`${resources.battery_percent}%${resources.on_battery?' · 배터리 사용':' · 전원 연결'}`),settingRow('절전 복귀 감지',`${resources?.suspected_resume_count||0}회`),settingRow('수집 지연',resources?.collector_delay_seconds==null?'이벤트 대기':`${Math.round(resources.collector_delay_seconds)}초`),settingRow('비정상 종료 복구',recovery.unclean_shutdown_detected?recovery.recovery_action:'필요 없음'),settingRow('실행 시간',resources?`${Math.floor(resources.uptime_seconds/60)}분`:'-'));
   }
+  function formatBytes(value){const bytes=Number(value||0);if(bytes<1024)return `${bytes} B`;if(bytes<1024*1024)return `${(bytes/1024).toFixed(1)} KB`;if(bytes<1024*1024*1024)return `${(bytes/1024/1024).toFixed(1)} MB`;return `${(bytes/1024/1024/1024).toFixed(1)} GB`;}
   function settingRow(label,value){const row=node('div','setting-row');row.append(node('span','',label),node('strong','',value));return row;}
-  function selectIncident(item){state.selected=item;state.tab='graph';navigate('investigation');renderInvestigation();}
+  function formField(label,control){const group=node('div','field-group'),caption=node('label','',label);if(control.id)caption.htmlFor=control.id;group.append(caption,control);return group;}
+  function selectIncident(item){state.selected=item;state.tab='graph';const config=item.management?.graph_config||state.graphConfigs.get(item.incident_id)||{layout:'hierarchical',hiddenTypes:[],riskOnly:false};state.graphLayout=config.layout||'hierarchical';state.graphHiddenTypes=new Set(config.hiddenTypes||[]);state.graphRiskOnly=Boolean(config.riskOnly);const url=new URL(location.href);url.searchParams.set('incident',item.incident_id);history.replaceState(null,'',url);navigate('investigation');renderInvestigation();}
+  function persistGraphConfig(item){const graph_config={layout:state.graphLayout,hiddenTypes:[...state.graphHiddenTypes],riskOnly:state.graphRiskOnly};state.graphConfigs.set(item.incident_id,graph_config);api(`/incidents/${encodeURIComponent(item.incident_id)}/management`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({graph_config})}).catch(error=>console.warn('그래프 설정 저장 실패',error));}
+  function moveIncident(direction){const items=state.incidentPageItems,index=items.findIndex(item=>item.incident_id===state.selected?.incident_id),next=items[index+direction];if(next)selectIncident(next);else toast(direction<0?'이전 사건이 없습니다.':'다음 사건이 없습니다.');}
   const mitreByRule={'PROC-001':['Execution','T1204'], 'PROC-002':['Execution','T1059.001'], 'FILE-001':['Persistence','T1105'], 'NET-001':['Command & Control','T1071'], 'CORR-001':['Multi-stage','XDR']};
   function mitreForItem(item){const seen=new Set();return (item.findings||[]).map(finding=>mitreByRule[finding.rule_id]).filter(Boolean).filter(entry=>{const key=entry.join(':');if(seen.has(key))return false;seen.add(key);return true;});}
   function renderMitreStrip(item){const strip=document.querySelector('#mitre-strip');strip.replaceChildren();mitreForItem(item).forEach(([tactic,technique])=>{const tag=node('span','mitre-tag');tag.append(node('strong','',technique),document.createTextNode(tactic));strip.append(tag);});}
@@ -517,22 +645,49 @@
   function renderInvestigationTab(item){
     const body=document.querySelector('#investigation-body');body.replaceChildren();
     if(state.tab==='graph'){
-      const toolbar=node('div','graph-toolbar'),copy=node('p','','빈 공간 드래그: 이동 · 휠: 확대/축소 · 노드 드래그: 위치 변경'),search=node('input','graph-search');search.placeholder='프로세스, IP, 파일 검색';toolbar.append(copy,search);
+      const toolbar=node('div','graph-toolbar'),copy=node('p','','빈 공간 드래그: 이동 · 휠: 확대/축소 · 화살표: 키보드 노드 이동'),search=node('input','graph-search'),options=node('div','graph-options'),layout=node('select');search.placeholder='프로세스, IP, 파일 검색';[['hierarchical','계층형'],['radial','방사형'],['timeline','시간축']].forEach(([value,label])=>{const option=node('option','',label);option.value=value;option.selected=value===state.graphLayout;layout.append(option);});const riskOnly=node('button','secondary',state.graphRiskOnly?'위험 경로 전체 표시':'위험 경로만'),exportSvg=node('button','secondary','SVG'),exportPng=node('button','secondary','PNG'),exportJson=node('button','secondary','JSON');options.append(layout,riskOnly,exportSvg,exportPng,exportJson);toolbar.append(copy,search,options);
       const workbench=node('div','graph-workbench'),activity=node('aside','activity-panel'),activityTitle=node('h4','','사건 활동'),activityCopy=node('p','',`${item.source_events.length}개 이벤트 · 클릭하면 관계도에서 위치를 찾습니다.`),activityList=node('div','activity-list'),graphColumn=node('div','graph-column'),graph=node('div','attack-graph');activity.append(activityTitle,activityCopy,activityList);graphColumn.append(graph);workbench.append(activity,graphColumn);body.append(toolbar,workbench);
-      const controller=renderAttackGraph(graph,item,{interactive:true});search.oninput=()=>controller?.search(search.value);[...(item.source_events||[])].sort((a,b)=>a.timestamp.localeCompare(b.timestamp)).forEach(event=>{const button=node('button','activity-item');button.append(node('span','',`${formatTime(event.timestamp)} · ${eventLabel[event.event_type]||event.event_type}`),node('strong','',compactLabel(eventSummary(event),38)));button.onclick=()=>{activityList.querySelectorAll('button').forEach(entry=>entry.classList.remove('active'));button.classList.add('active');controller?.focusForEvent(event);};activityList.append(button);});
+      const saveGraphConfig=()=>persistGraphConfig(item);const controller=renderAttackGraph(graph,item,{interactive:true});search.oninput=()=>controller?.search(search.value);layout.onchange=()=>{state.graphLayout=layout.value;state.graphViews.delete(`investigation:${item.incident_id}`);saveGraphConfig();renderInvestigationTab(item);};riskOnly.onclick=()=>{state.graphRiskOnly=!state.graphRiskOnly;saveGraphConfig();renderInvestigationTab(item);};exportSvg.onclick=()=>controller?.export('svg');exportPng.onclick=()=>controller?.export('png');exportJson.onclick=()=>controller?.export('json');[...(item.source_events||[])].sort((a,b)=>a.timestamp.localeCompare(b.timestamp)).forEach(event=>{const button=node('button','activity-item');button.append(node('span','',`${formatTime(event.timestamp)} · ${eventLabel[event.event_type]||event.event_type}`),node('strong','',compactLabel(eventSummary(event),38)));button.onclick=()=>{activityList.querySelectorAll('button').forEach(entry=>entry.classList.remove('active'));button.classList.add('active');controller?.focusForEvent(event);};activityList.append(button);});
     }else if(state.tab==='summary'){
       const grid=node('div','detail-grid');[['판정',verdictLabel[item.verdict]],['위험 점수',`${item.risk_score} / 100`],['탐지 규칙',`${item.findings.length}개`],['원본 이벤트',`${item.source_events.length}개`],['공격 흐름',`${item.attack_chains.length}개`],['최종 시각',formatTime(latestTimestamp(item))]].forEach(([a,b])=>{const box=node('div','detail-item');box.append(node('span','',a),node('strong','',b));grid.append(box);});body.append(grid);
     }else if(state.tab==='evidence'){
       const list=node('div','evidence-list');item.findings.forEach(f=>{const card=node('div','evidence-card');card.append(node('span',`badge ${f.severity>=70?'suspicious':'needs_review'}`,`${f.source.toUpperCase()} · ${f.rule_id}`),node('p','',findingLabel(f)),node('p','',`원본 이벤트: ${f.event_ids.join(', ')}`));list.append(card);});item.source_events.forEach(e=>{const card=node('div','evidence-card');card.append(node('strong','',`${eventLabel[e.event_type]||e.event_type} · ${e.event_id}`),node('p','',eventSummary(e)));list.append(card);});body.append(list);
     }else if(state.tab==='attack'){
       const timeline=node('div','timeline');const events=[...item.source_events].sort((a,b)=>a.timestamp.localeCompare(b.timestamp));events.forEach((event,index)=>{const row=node('div','timeline-item');row.append(node('div','timeline-number',index+1));const eventCopy=node('div');eventCopy.append(node('strong','',eventLabel[event.event_type]||event.event_type),node('div','muted',formatTime(event.timestamp)),node('p','muted',eventSummary(event)));row.append(eventCopy);timeline.append(row);});body.append(timeline);
+    }else if(state.tab==='manage'){
+      const management=item.management||{},panel=node('div','management-panel'),status=node('select'),title=node('input'),note=node('textarea'),tags=node('input'),checklist=node('textarea'),actions=node('div','management-actions');
+      Object.entries(statusLabel).forEach(([value,label])=>{const option=node('option','',label);option.value=value;option.selected=value===(management.status||'new');status.append(option);});title.placeholder='사용자 사건 제목';title.value=management.custom_title||'';note.placeholder='개인용 조사 메모';note.value=management.note||'';tags.placeholder='태그 (쉼표로 구분)';tags.value=(management.tags||[]).join(', ');checklist.placeholder='조사 체크리스트 (한 줄에 하나)';checklist.value=(management.checklist||[]).join('\n');
+      status.id='management-status';title.id='management-title';note.id='management-note';tags.id='management-tags';checklist.id='management-checklist';
+      const save=node('button','primary','관리 정보 저장'),bookmark=node('button','secondary',management.bookmarked?'★ 북마크 해제':'☆ 북마크'),resetTitle=node('button','secondary','자동 제목으로 복원'),previous=node('button','secondary','← 이전 사건'),next=node('button','secondary','다음 사건 →'),related=node('button','secondary','관련 사건'),merge=node('button','secondary','사건 병합'),split=node('button','secondary','이벤트 분리'),remove=node('button','secondary','영구 삭제');
+      save.onclick=()=>saveIncidentManagement(item,{status:status.value,custom_title:title.value.trim()||null,note:note.value,tags:tags.value.split(',').map(x=>x.trim()).filter(Boolean),checklist:checklist.value.split('\n').map(x=>x.trim()).filter(Boolean),close_reason:['resolved','false_positive'].includes(status.value)?prompt('닫기 사유를 입력하세요.',management.close_reason||''):management.close_reason});bookmark.onclick=()=>saveIncidentManagement(item,{bookmarked:!management.bookmarked});resetTitle.onclick=()=>saveIncidentManagement(item,{custom_title:null});previous.onclick=()=>moveIncident(-1);next.onclick=()=>moveIncident(1);related.onclick=()=>showRelatedIncidents(item);merge.onclick=()=>mergeIncidents(item);split.onclick=()=>splitIncident(item);remove.onclick=()=>deleteIncident(item);actions.append(save,bookmark,resetTitle,previous,next,related,merge,split,remove);panel.append(formField('상태',status),formField('사건 제목',title),formField('조사 메모',note),formField('태그',tags),formField('조사 체크리스트',checklist),actions);body.append(panel);
     }else{
-      const list=node('div','action-list');(item.recommended_actions||[]).forEach(action=>{const card=node('div','action-item');card.append(node('strong','',actionLabel[action]||action),node('p','',action==='collect_additional_evidence'?'원본 이벤트와 연관 증거를 추가 수집합니다.':'실제 조치 전 대상 재검증과 사용자 승인이 필요합니다.'));list.append(card);});if(!list.children.length)list.append(node('p','muted','현재 권장된 대응이 없습니다.'));body.append(list);
+      const capabilities=state.status?.response_capabilities||{},guard=node('div','detail-grid');[['실제 대응',state.status?.active_response?'활성화 · 승인 필수':'기본 비활성화'],['프로세스 종료',capabilities.process_tree?'하위 프로세스까지 영향도 재검증':'사용 안 함'],['격리·차단 복구',(capabilities.reversible_actions||[]).length?'복구 기록 유지':'사용 안 함'],['대응 플레이북',capabilities.playbooks?'단계별 개별 승인':'사용 안 함']].forEach(([label,value])=>{const box=node('div','detail-item');box.append(node('span','',label),node('strong','',value));guard.append(box);});const list=node('div','action-list');(item.recommended_actions||[]).forEach(action=>{const card=node('div','action-item');card.append(node('strong','',actionLabel[action]||action),node('p','',action==='collect_additional_evidence'?'원본 이벤트와 연관 증거를 추가 수집합니다.':'실제 조치 전 대상·영향 범위 재검증과 사용자 승인이 필요합니다.'));list.append(card);});if(!list.children.length)list.append(node('p','muted','현재 권장된 대응이 없습니다.'));body.append(guard,list);
     }
   }
   function renderInvestigationSide(item){const validation=document.querySelector('#validation-list');validation.replaceChildren(healthRow('검증 결과',item.validation.passed?'통과':'확인 필요',item.validation.passed?'green':'amber'),healthRow('재검토 횟수',item.validation.review_count,'blue'),healthRow('검증 오류',item.validation.errors.length,'red'));const sources=[...new Set(item.source_events.map(x=>x.source))];const source=document.querySelector('#source-list');source.replaceChildren(...sources.map(value=>healthRow(value,'연결됨','green')),healthRow('이벤트',item.source_events.length,'blue'));renderGeoMap(document.querySelector('#investigation-geo'),document.querySelector('#investigation-origin'),item);}
   function healthRow(label,value,color){const row=node('div','health-row');const dot=node('i','legend-dot');dot.style.background=`var(--${color})`;row.append(dot,node('span','',label),node('strong','',value));return row;}
   async function createDemo(){try{toast('안전한 데모 사건을 분석하고 있습니다…');const report=await api('/demo/incidents',{method:'POST'});await refreshIncidentData({updatedIncidentId:report.incident_id});selectIncident(report);toast('데모 사건이 생성되었습니다. 실제 악성 코드는 실행되지 않았습니다.');}catch(error){toast(error.message);}}
+  async function saveIncidentManagement(item,changes){try{const updated=await api(`/incidents/${encodeURIComponent(item.incident_id)}/management`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(changes)});state.selected=updated;await refreshIncidentData({updatedIncidentId:item.incident_id,force:true});renderInvestigation();toast('사건 관리 정보를 저장했습니다.');}catch(error){toast(error.message);}}
+  async function deleteDemoIncidents(){if(!confirm('안전한 데모 사건을 모두 삭제할까요?'))return;try{const result=await api('/demo/incidents',{method:'DELETE'});state.selected=null;await refreshIncidentData({force:true});toast(`데모 사건 ${result.deleted}건을 삭제했습니다.`);}catch(error){toast(error.message);}}
+  async function toggleStartup(){try{const enabled=!state.settings.startup_enabled,result=await api('/settings/startup',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled})});state.settings.startup_enabled=result.enabled;renderSettings();toast(result.enabled?'시작 프로그램을 켰습니다.':'시작 프로그램을 껐습니다.');}catch(error){toast(error.message);}}
+  async function createStorageBackup(){if(!confirm('현재 로컬 사건 DB의 검증된 백업을 만들까요?'))return;try{const result=await api('/storage/backup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirmed:true})});state.storageBackups=await api('/storage/backups');renderSettings();toast(`백업 완료: ${result.file_name}`);}catch(error){toast(error.message);}}
+  async function archiveExpiredStorage(){if(!confirm('보존 기간이 지난 사건·이벤트를 압축 보관 파일로 만들까요? 원본 삭제는 이 작업에서 수행하지 않습니다.'))return;try{const result=await api('/storage/archive',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirmed:true})});toast(`보관 완료: ${result.file_name} · 사건 ${result.incidents}건`);}catch(error){toast(error.message);}}
+  async function stageStorageRestore(){const select=document.querySelector('#storage-backup-select'),fileName=select.value;if(!fileName){toast('복원할 정상 백업을 선택하세요.');return;}const typed=prompt(`다음 실행에서 DB를 ${fileName} 상태로 복원합니다. 계속하려면 백업 파일명을 입력하세요.`);if(typed!==fileName)return;try{state.storageRecovery=await api('/storage/restore',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file_name:fileName,confirmed:true})});renderSettings();toast('복원을 예약했습니다. WeaveXDR를 정상 종료한 뒤 다시 실행하면 적용됩니다.');}catch(error){toast(error.message);}}
+  function renderScanPaths(){const list=document.querySelector('#scan-paths'),clear=document.querySelector('#scan-paths-clear');if(!list)return;list.replaceChildren();clear.disabled=!state.scanPaths.length||state.pathDialogOpen;if(!state.scanPaths.length){list.append(node('div','selected-path-empty','선택된 경로가 없습니다. 빠른·전체 검사는 기본 검사 범위를 사용합니다.'));return;}state.scanPaths.forEach(path=>{const item=node('div','selected-path-item'),label=node('span','',path);item.setAttribute('role','listitem');label.title=path;item.append(label);list.append(item);});}
+  async function chooseScanPaths(kind){if(state.pathDialogOpen)return;state.pathDialogOpen=true;['scan-files','scan-folder'].forEach(id=>document.querySelector(`#${id}`).disabled=true);renderScanPaths();try{const result=await api('/dialogs/scan-paths',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind})}),known=new Set(state.scanPaths.map(path=>path.toLocaleLowerCase()));(result.paths||[]).forEach(path=>{const key=path.toLocaleLowerCase();if(!known.has(key)){known.add(key);state.scanPaths.push(path);}});renderScanPaths();}catch(error){toast(error.message);}finally{state.pathDialogOpen=false;['scan-files','scan-folder'].forEach(id=>document.querySelector(`#${id}`).disabled=false);renderScanPaths();}}
+  function clearScanPaths(){state.scanPaths=[];renderScanPaths();}
+  async function startFileScan(){try{const profile=document.querySelector('#scan-profile').value,paths=[...state.scanPaths];if(profile==='custom'&&!paths.length){toast('사용자 지정 검사는 파일 또는 폴더를 먼저 선택하세요.');return;}state.scanJob=await api('/scans',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({profile,paths})});renderScan();clearInterval(state.scanTimer);state.scanTimer=setInterval(refreshScan,1000);}catch(error){toast(error.message);}}
+  async function refreshScan(){if(!state.scanJob)return;try{state.scanJob=await api(`/scans/${state.scanJob.job_id}`);renderScan();if(['completed','cancelled','failed'].includes(state.scanJob.state)){clearInterval(state.scanTimer);state.scanTimer=null;}}catch(error){clearInterval(state.scanTimer);toast(error.message);}}
+  async function cancelFileScan(){if(!state.scanJob)return;state.scanJob=await api(`/scans/${state.scanJob.job_id}/cancel`,{method:'POST'});renderScan();}
+  async function importSigma(){try{const payload=document.querySelector('#sigma-payload').value,result=await api('/sigma/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({payload})});document.querySelector('#content-status').replaceChildren(settingRow('검증된 규칙',`${result.rules.length}개 · 모두 비활성`));toast('Sigma 후보를 검증했습니다.');}catch(error){toast(error.message);}}
+  function renderScan(){const job=state.scanJob,list=document.querySelector('#scan-status'),summary=document.querySelector('#scan-summary'),bar=document.querySelector('#scan-progress-bar'),cancel=document.querySelector('#scan-cancel');if(!list||!summary)return;list.replaceChildren();const active=Boolean(job&&['queued','running'].includes(job.state));if(cancel)cancel.disabled=!active;if(!job){summary.textContent='실행 중인 검사가 없습니다.';if(bar)bar.style.width='0%';list.append(settingRow('상태','대기'));return;}const progress=job.total_files?Math.min(100,Math.round(job.scanned_files/job.total_files*100)):0,phaseLabel={queued:'대기',enumerating:'파일 목록 구성',scanning:'정적 분석',defender:'Defender 마무리',completed:'완료'}[job.phase]||job.state;if(bar)bar.style.width=`${progress}%`;summary.textContent=`${phaseLabel} · ${progress}% · 탐지 ${job.findings}`;list.append(settingRow('처리 파일',`${job.scanned_files} / ${job.total_files||'계산 중'}`),settingRow('처리 속도',job.files_per_second?`${job.files_per_second} 파일/초`:'계산 중'),settingRow('예상 잔여',job.estimated_seconds_remaining==null?'계산 중':`${job.estimated_seconds_remaining}초`),settingRow('캐시 사용',`${job.cache_hits||0}개`),settingRow('Defender',job.defender_scanned?'범위 검사 완료':active?'동시 검사 중':'검사 불가'),settingRow('현재 파일',job.current_path||'-'),settingRow('경고',job.error||'없음'));}
+  function renderQuarantine(){const list=document.querySelector('#quarantine-list');if(!list)return;list.replaceChildren();state.quarantine.forEach(item=>{const row=settingRow(shortPathName(item.original_path),`${item.status} · ${item.sha256.slice(0,12)}`);if(item.status==='quarantined'){const button=node('button','secondary','재검사 후 복원');button.onclick=()=>restoreQuarantine(item);row.append(button);}list.append(row);});if(!list.children.length)list.append(settingRow('격리 항목','없음'));}
+  async function restoreQuarantine(item){try{const preview=await api(`/quarantine/${item.item_id}/restore-preview`);if(!preview.restore_recommended){alert('재검사에서 탐지가 남아 있어 복원을 권장하지 않습니다.');return;}if(!confirm('재검사를 통과했습니다. 원래 위치로 복원할까요?'))return;await api(`/quarantine/${item.item_id}/restore`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirmed:true})});state.quarantine=await api('/quarantine');renderQuarantine();toast('격리 파일을 복원했습니다.');}catch(error){toast(error.message);}}
+  async function saveCurrentSearch(){const name=prompt('저장할 검색 이름을 입력하세요.');if(!name)return;try{await api('/saved-searches',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,filters:Object.fromEntries(incidentFilterQuery())})});toast('검색 프리셋을 저장했습니다.');}catch(error){toast(error.message);}}
+  async function showRelatedIncidents(item){try{const related=await api(`/incidents/${encodeURIComponent(item.incident_id)}/related`);alert(related.length?related.map(entry=>`${entry.incident_id}\n  ${entry.shared_entities.join(', ')}`).join('\n\n'):'공통 엔터티가 있는 과거 사건이 없습니다.');}catch(error){toast(error.message);}}
+  async function mergeIncidents(item){const copy=prompt('병합할 다른 사건 ID를 쉼표로 구분해 입력하세요.');if(!copy)return;try{const merged=await api('/incidents/merge',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({incident_ids:[item.incident_id,...copy.split(',').map(x=>x.trim()).filter(Boolean)]})});await refreshIncidentData({force:true});selectIncident(merged);toast('사건을 병합했습니다.');}catch(error){toast(error.message);}}
+  async function splitIncident(item){const copy=prompt('새 사건으로 분리할 이벤트 ID를 쉼표로 구분하세요.');if(!copy)return;try{const results=await api(`/incidents/${encodeURIComponent(item.incident_id)}/split`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({event_ids:copy.split(',').map(x=>x.trim()).filter(Boolean)})});await refreshIncidentData({force:true});selectIncident(results[0]);toast('사건을 두 개로 분리했습니다.');}catch(error){toast(error.message);}}
+  async function deleteIncident(item){const confirmation=prompt('영구 삭제하려면 사건 ID를 정확히 입력하세요.');if(confirmation!==item.incident_id)return;try{await api(`/incidents/${encodeURIComponent(item.incident_id)}`,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirmation})});state.selected=null;navigate('incidents');await refreshIncidentData({force:true});toast('사건과 원본 이벤트를 삭제했습니다.');}catch(error){toast(error.message);}}
   async function configureCollector(){if(!confirm('Windows 관리자 권한으로 Sysmon 수집 권한을 설정할까요? UAC 확인창이 표시됩니다.'))return;try{await api('/collector/configure',{method:'POST'});toast('Windows UAC 확인창에서 허용을 선택하세요. 설정 후 수집기가 자동으로 다시 연결됩니다.');}catch(error){toast(error.message);}}
   function scheduleIncidentRefresh(item){if(state.selected?.incident_id===item.incident_id)state.selected=item;clearTimeout(state.incidentRefreshTimer);state.incidentRefreshTimer=setTimeout(()=>refreshIncidentData({updatedIncidentId:item.incident_id}).catch(error=>console.warn('사건 화면 갱신 실패',error)),250);}
   async function streamEvents(){state.streaming=true;const controller=new AbortController();state.streamController=controller;try{const response=await fetch('/events',{headers:authHeaders(),signal:controller.signal});if(!response.ok||!response.body)return;const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='';while(true){const{value,done}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});const messages=buffer.split('\n\n');buffer=messages.pop();messages.forEach(message=>{const line=message.split('\n').find(x=>x.startsWith('data:'));if(!line)return;scheduleIncidentRefresh(JSON.parse(line.slice(5)));});}}catch(error){if(error.name!=='AbortError')console.warn('실시간 사건 연결이 종료되었습니다.',error);}finally{if(state.streamController===controller)state.streamController=null;state.streaming=false;}}
@@ -543,6 +698,7 @@
   function findingLabel(finding){return findingLabels[finding.rule_id]||finding.reason;}
   function shortPathName(value){return String(value||'').split(/[\\/]/).filter(Boolean).at(-1)||'';}
   function incidentTitle(item){
+    if(item.management?.custom_title)return item.management.custom_title;
     const firstFinding=item.findings?.[0];if(firstFinding)return findingLabel(firstFinding);
     // 규칙 탐지가 없는 원본 Sysmon 사건도 내부 ID 대신 사용자가 바로 이해할 수
     // 있도록 핵심 행위와 엔티티를 조합한다. 전체 ID는 표의 보조 줄에만 남긴다.
@@ -560,13 +716,33 @@
 
   document.querySelectorAll('[data-nav],[data-go]').forEach(button=>button.onclick=()=>navigate(button.dataset.nav||button.dataset.go));
   function scheduleFilteredRefresh(){state.incidentPage=1;clearTimeout(state.filterTimer);state.filterTimer=setTimeout(()=>refreshIncidentData().catch(error=>toast(error.message)),200);}
-  document.querySelector('#refresh').onclick=loadAll;document.querySelector('#incident-search').oninput=scheduleFilteredRefresh;document.querySelector('#verdict-filter').onchange=scheduleFilteredRefresh;
+  document.querySelector('#refresh').onclick=loadAll;document.querySelector('#incident-search').oninput=scheduleFilteredRefresh;document.querySelector('#verdict-filter').onchange=scheduleFilteredRefresh;['status-filter','risk-filter','entity-filter','date-from','sort-filter'].forEach(id=>document.querySelector(`#${id}`).addEventListener(id==='entity-filter'?'input':'change',scheduleFilteredRefresh));
+  document.querySelector('#scan-start').onclick=startFileScan;document.querySelector('#scan-cancel').onclick=cancelFileScan;document.querySelector('#scan-files').onclick=()=>chooseScanPaths('files');document.querySelector('#scan-folder').onclick=()=>chooseScanPaths('folder');document.querySelector('#scan-paths-clear').onclick=clearScanPaths;renderScanPaths();
+  document.querySelector('#sigma-import').onclick=importSigma;
+  document.querySelector('#delete-demos').onclick=deleteDemoIncidents;document.querySelector('#save-search').onclick=saveCurrentSearch;document.querySelector('#startup-toggle').onclick=toggleStartup;
   document.querySelector('#collector-action').onclick=()=>document.querySelector('#collector-action').dataset.mode==='configure'?configureCollector():navigate('settings');
+  document.querySelector('#storage-backup').onclick=createStorageBackup;
+  document.querySelector('#storage-archive').onclick=archiveExpiredStorage;document.querySelector('#storage-restore').onclick=stageStorageRestore;
   document.querySelector('#investigation-tabs').onclick=event=>{const button=event.target.closest('[data-tab]');if(!button)return;state.tab=button.dataset.tab;renderInvestigation();};
   document.querySelector('#auth-retry').onclick=retryAutomaticConnection;document.querySelector('#local-api-address').textContent=location.host;
   document.querySelector('#shutdown').onclick=async()=>{if(!confirm('WeaveXDR 서버를 종료할까요? 브라우저 탭도 더 이상 데이터를 불러올 수 없습니다.'))return;try{clearInterval(state.statusTimer);clearTimeout(state.incidentRefreshTimer);clearTimeout(state.filterTimer);state.statusTimer=null;state.incidentRefreshTimer=null;state.filterTimer=null;state.streamController?.abort();await api('/shutdown',{method:'POST'});setConnected(false);toast('WeaveXDR를 종료했습니다. 이 탭을 닫아도 됩니다.');setTimeout(()=>document.body.replaceChildren(node('div','empty','WeaveXDR가 종료되었습니다. 이 창을 닫아 주세요.')),700);}catch(error){if(!state.statusTimer)state.statusTimer=setInterval(refreshStatus,3000);toast(error.message);}};
+  window.weavexdrUiDiagnostics=()=>{
+    const visible=element=>element.getClientRects().length&&getComputedStyle(element).visibility!=='hidden';
+    const controls=[...document.querySelectorAll('button,input,select,textarea')].filter(visible);
+    const clippedControls=controls.filter(element=>element.scrollWidth>element.clientWidth+1||element.scrollHeight>element.clientHeight+1).map(element=>element.id||element.textContent.trim().slice(0,30));
+    const undersizedText=[...document.querySelectorAll('button,input,select,textarea,.page,.panel')].filter(visible).filter(element=>parseFloat(getComputedStyle(element).fontSize)<11).map(element=>element.id||element.className).slice(0,20);
+    return {
+      viewport:{width:innerWidth,height:innerHeight,devicePixelRatio},
+      horizontalOverflow:document.documentElement.scrollWidth>document.documentElement.clientWidth+1,
+      clippedControls,
+      undersizedText,
+      graphControlsVisible:[...document.querySelectorAll('.canvas-controls')].filter(visible).length,
+      focusableControls:controls.length,
+      globe:state.globeView?.diagnostics()||null,
+    };
+  };
   window.addEventListener('beforeunload',()=>state.streamController?.abort());
-  async function bootstrap(){renderTrend();if(launchToken){try{await establishSession(launchToken);}catch(error){showAuth();toast(error.message);return;}}await loadAll();state.statusTimer=setInterval(refreshStatus,3000);}
+  async function bootstrap(){renderTrend();if(launchToken){try{await establishSession(launchToken);}catch(error){showAuth();toast(error.message);return;}}await loadAll();const incidentId=new URLSearchParams(location.search).get('incident');if(incidentId){try{selectIncident(await api(`/incidents/${encodeURIComponent(incidentId)}`));}catch(error){toast('링크의 사건을 찾을 수 없습니다.');}}state.statusTimer=setInterval(refreshStatus,3000);}
   bindDemoButtons(); bootstrap();
 </script>
 </body>

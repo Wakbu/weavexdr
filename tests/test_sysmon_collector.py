@@ -127,3 +127,19 @@ def test_collector_retries_event_when_submission_fails_before_cursor_advance():
 
     assert sink.attempts >= 2
     assert [batch.batch_id for batch in sink.batches] == ["sysmon-batch-1001"]
+
+
+def test_collector_pause_and_resume_publish_consistent_status():
+    statuses = []
+    collector = SysmonCollector(
+        FailOnceSink(),
+        reader_factory=lambda: RetryReader(SysmonLogRecord(1001, process_create_xml())),
+        status_callback=statuses.append,
+        poll_interval=0.01,
+    )
+    collector.pause()
+    assert collector.paused is True
+    assert statuses[-1]["state"] == "paused"
+    collector.resume()
+    assert collector.paused is False
+    assert statuses[-1]["state"] == "running"

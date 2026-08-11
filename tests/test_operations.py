@@ -105,6 +105,26 @@ def test_windows_service_name_and_installer_scripts_are_valid_powershell():
         assert completed.returncode == 0, completed.stderr
 
 
+def test_installation_does_not_enable_startup_by_default():
+    installer = (PROJECT_ROOT / "scripts" / "install.ps1").read_text(encoding="utf-8-sig")
+    wizard = (PROJECT_ROOT / "scripts" / "install_wizard.ps1").read_text(encoding="utf-8-sig")
+    assert "--startup demand install" in installer
+    assert "windows_service start" not in installer
+    assert "$startup.Checked = $false" in wizard
+    assert "Remove-ItemProperty" in wizard
+
+
+def test_windows_build_and_tray_use_the_brand_icon():
+    build_script = (PROJECT_ROOT / "scripts" / "build_local_executable.ps1").read_text(encoding="utf-8-sig")
+    tray_source = (PROJECT_ROOT / "src" / "xdr_graph" / "tray.py").read_text(encoding="utf-8")
+    icon_path = PROJECT_ROOT / "src" / "xdr_graph" / "static" / "weavexdr.ico"
+    assert "--icon" in build_script
+    assert "weavexdr.ico" in build_script
+    assert "weavexdr.ico" in tray_source
+    assert "LoadImage" in tray_source
+    assert icon_path.stat().st_size > 10_000
+
+
 def test_windows_package_validation_checks_version_and_required_files(tmp_path):
     package_path = tmp_path / "weavexdr.zip"
     with zipfile.ZipFile(package_path, "w") as package:

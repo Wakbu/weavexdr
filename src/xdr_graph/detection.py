@@ -19,7 +19,10 @@ DEFAULT_RULES_PATH = (_packaged_config if _packaged_config.is_dir() else _source
 class ThreatSource(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    framework: Literal["owasp", "owasp_genai", "mitre_attack", "cisa_kev", "local"]
+    framework: Literal[
+        "owasp", "owasp_genai", "mitre_attack", "cisa_kev", "sigma", "stix",
+        "taxii", "reputation", "local",
+    ]
     version: str = Field(min_length=1)
     retrieved_at: str = Field(min_length=1)
     url: str
@@ -36,13 +39,17 @@ class ThreatSource(BaseModel):
 class RuleMatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    event_type: Literal["process_start", "file_create", "network_connect"]
+    event_type: str
     process_names: list[str] = Field(default_factory=list)
     parent_process_names: list[str] = Field(default_factory=list)
     command_contains_any: list[str] = Field(default_factory=list)
     file_extensions: list[str] = Field(default_factory=list)
     path_contains_any: list[str] = Field(default_factory=list)
     destination_scope: Literal["public"] | None = None
+    actions: list[str] = Field(default_factory=list)
+    target_contains_any: list[str] = Field(default_factory=list)
+    field_equals: dict[str, str] = Field(default_factory=dict)
+    field_contains_any: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class DetectionRule(BaseModel):
@@ -170,6 +177,21 @@ class DetectionRuleEngine:
         if match.destination_scope == "public":
             destination_ip = getattr(event, "destination_ip", None)
             if not destination_ip or not ipaddress.ip_address(destination_ip).is_global:
+                return False
+        action = (getattr(event, "action", None) or "").lower()
+        if match.actions and action not in {value.lower() for value in match.actions}:
+            return False
+        target = (getattr(event, "target", None) or "").lower()
+        if match.target_contains_any and not any(
+            marker.lower() in target for marker in match.target_contains_any
+        ):
+            return False
+        for field_name, expected in match.field_equals.items():
+            if str(getattr(event, field_name, "")).lower() != expected.lower():
+                return False
+        for field_name, markers in match.field_contains_any.items():
+            value = str(getattr(event, field_name, "")).lower()
+            if markers and not any(marker.lower() in value for marker in markers):
                 return False
         return True
 

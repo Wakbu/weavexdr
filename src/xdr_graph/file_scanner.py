@@ -91,6 +91,9 @@ def _run_powershell_json(script: str, target_path: Path, timeout: float) -> str:
         errors="replace",
         timeout=timeout,
         env=command_environment,
+        # GUI EXE에서 파일마다 PowerShell 콘솔 창이 깜빡이지 않도록 자식 프로세스를
+        # 창 없는 모드로 실행한다. 비 Windows에서는 플래그가 0이어서 동작이 동일하다.
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         check=False,
     )
     if completed.returncode != 0:
@@ -229,7 +232,14 @@ class FileInspectionEngine:
         self.yara_timeout = yara_timeout
         self.defender_timeout = defender_timeout
 
-    def inspect(self, file_path: str | Path, *, event_id: str) -> FileInspectionResult:
+    def inspect(
+        self,
+        file_path: str | Path,
+        *,
+        event_id: str,
+        include_signature: bool = True,
+        include_defender: bool = True,
+    ) -> FileInspectionResult:
         target_path = Path(file_path).resolve(strict=True)
         if not target_path.is_file():
             raise ValueError(f"inspection target is not a regular file: {target_path}")
@@ -243,8 +253,13 @@ class FileInspectionEngine:
 
         metadata = self._collect_metadata(target_path)
         errors: list[str] = []
-        signature = self.signature_inspector.inspect(
-            target_path, timeout=self.signature_timeout
+        # 대량 검사에서는 파일마다 PowerShell과 Defender 프로세스를 시작하면
+        # 수천 파일이 수천 초로 늘어난다. 호출자가 배치 Defender 검사를 사용하거나
+        # 서명 가치가 낮은 일반 파일을 검사할 때 외부 호출만 생략할 수 있게 한다.
+        signature = (
+            self.signature_inspector.inspect(target_path, timeout=self.signature_timeout)
+            if include_signature
+            else SignatureResult(status="unavailable", message="skipped by scan profile")
         )
         if signature.status == "error":
             errors.append(f"signature: {signature.message or 'inspection failed'}")
@@ -258,8 +273,10 @@ class FileInspectionEngine:
             yara_matches = ()
             errors.append(f"yara: {error}")
 
-        defender = self.defender_scanner.scan(
-            target_path, timeout=self.defender_timeout
+        defender = (
+            self.defender_scanner.scan(target_path, timeout=self.defender_timeout)
+            if include_defender
+            else DefenderResult(scanned=True)
         )
         if not defender.scanned:
             errors.append(f"defender: {defender.error or 'scan failed'}")

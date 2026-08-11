@@ -1,5 +1,7 @@
 import hashlib
 import json
+import subprocess
+from types import SimpleNamespace
 from pathlib import Path
 
 import pytest
@@ -13,6 +15,7 @@ from xdr_graph.file_scanner import (
     FileTooLargeError,
     SignatureResult,
     YaraScanner,
+    _run_powershell_json,
 )
 
 
@@ -20,6 +23,18 @@ PROJECT_ROOT = Path(__file__).parents[1]
 SAMPLE_FILE = PROJECT_ROOT / "samples" / "suspicious_office_batch.json"
 BENIGN_FILE = PROJECT_ROOT / "samples" / "benign_document.txt"
 YARA_RULES = PROJECT_ROOT / "rules" / "file_scan.yar"
+
+
+def test_powershell_scanners_do_not_open_a_console_window(monkeypatch):
+    captured = {}
+
+    def fake_run(*args, **kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(returncode=0, stdout="{}", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    assert _run_powershell_json("Write-Output '{}'", SAMPLE_FILE, 1) == "{}"
+    assert captured["creationflags"] == getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
 def test_yara_scanner_matches_the_encoded_powershell_sample():
@@ -146,3 +161,33 @@ def test_scanner_failures_are_preserved_as_partial_result_errors():
         "yara: rule failure",
         "defender: Defender unavailable",
     )
+
+
+def test_batch_mode_skips_per_file_signature_and_defender_processes(tmp_path):
+    target = tmp_path / "sample.txt"
+    target.write_text("safe", encoding="utf-8")
+
+    class FailingSignature:
+        def inspect(self, *_args, **_kwargs):
+            raise AssertionError("signature process should not run")
+
+    class FailingDefender:
+        def scan(self, *_args, **_kwargs):
+            raise AssertionError("Defender process should not run per file")
+
+    class CleanYara:
+        def scan(self, *_args, **_kwargs):
+            return ()
+
+    engine = FileInspectionEngine(
+        CleanYara(), signature_inspector=FailingSignature(), defender_scanner=FailingDefender()
+    )
+    result = engine.inspect(
+        target,
+        event_id="batch-file",
+        include_signature=False,
+        include_defender=False,
+    )
+
+    assert result.signature.status == "unavailable"
+    assert result.defender.scanned is True

@@ -21,14 +21,20 @@ try {
         --onefile `
         --windowed `
         --name WeaveXDR `
+        --icon (Join-Path $projectRoot "src\xdr_graph\static\weavexdr.ico") `
         --paths (Join-Path $projectRoot "src") `
         --add-data "$(Join-Path $projectRoot 'config');xdr_graph/config" `
         --add-data "$(Join-Path $projectRoot 'src\xdr_graph\static');xdr_graph/static" `
+        --add-data "$(Join-Path $projectRoot 'rules');xdr_graph/rules" `
         --add-data "$(Join-Path $projectRoot 'scripts\configure_sysmon_access.ps1');xdr_graph/tools" `
         --collect-all langgraph `
         --collect-all charset_normalizer `
         --collect-all uvicorn `
         --collect-all anyio `
+        --collect-all yaml `
+        --hidden-import win32api `
+        --hidden-import win32con `
+        --hidden-import win32gui `
         --distpath $temporaryOutput `
         --workpath (Join-Path $workRoot "work") `
         --specpath (Join-Path $workRoot "spec") `
@@ -121,7 +127,8 @@ try {
     if ($sessionResponse.StatusCode -ne 200) { throw "Browser session exchange failed." }
     $cookieStatus = Invoke-WebRequest -UseBasicParsing -Uri "$baseUrl/status" -WebSession $browserSession -TimeoutSec 3
     if ($cookieStatus.StatusCode -ne 200) { throw "Browser cookie authentication failed." }
-    $shutdown = Invoke-WebRequest -UseBasicParsing -Method Post -Uri "$baseUrl/shutdown" -WebSession $browserSession -TimeoutSec 3
+    # 쿠키 인증 변경 요청은 실제 브라우저와 동일하게 정확한 loopback Origin을 제시해야 한다.
+    $shutdown = Invoke-WebRequest -UseBasicParsing -Method Post -Uri "$baseUrl/shutdown" -Headers @{ Origin = $baseUrl } -WebSession $browserSession -TimeoutSec 3
     if ($shutdown.StatusCode -ne 200) { throw "Executable shutdown request failed." }
     if (-not $serverProcess.WaitForExit(10000)) { throw "Executable did not stop after shutdown request." }
 }

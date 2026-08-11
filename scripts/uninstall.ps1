@@ -4,6 +4,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+Remove-ItemProperty -LiteralPath $runKey -Name 'WeaveXDR' -ErrorAction SilentlyContinue
 $pythonPath = Join-Path $InstallRoot "venv\Scripts\python.exe"
 if (Test-Path -LiteralPath $pythonPath -PathType Leaf) {
     & $pythonPath -m xdr_graph.windows_service stop
