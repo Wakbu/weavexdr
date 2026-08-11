@@ -59,6 +59,29 @@ def test_health_is_public_but_incidents_require_a_valid_token():
         store.close()
 
 
+def test_local_assistant_receives_minimal_dictionary_incident_context():
+    class FakeModelManager:
+        def chat(self, question, context):
+            payload = json.loads(context)
+            assert question == "무엇부터 확인할까?"
+            assert payload[0]["incident_id"] == "incident-001"
+            assert payload[0]["event_types"]
+            return {"answer": "고위험 사건부터 확인하세요.", "provider": "rules", "model": None}
+
+    store = SQLiteEventStore(":memory:")
+    PersistentIngestionService(store).submit(
+        NormalizedEventBatch.model_validate(json.loads(SAMPLE_BATCH.read_text(encoding="utf-8")))
+    )
+    runtime = ApiRuntime(event_store=store, dry_run_service=DryRunResponseService(), approval_service=ApprovalService(), model_manager=FakeModelManager())
+    client = TestClient(create_app(runtime, api_token=TOKEN, enforce_loopback=False))
+    try:
+        response = client.post("/assistant/chat", headers=AUTH, json={"question": "무엇부터 확인할까?"})
+        assert response.status_code == 200
+        assert response.json()["provider"] == "rules"
+    finally:
+        store.close()
+
+
 def test_storage_health_and_confirmed_backup_api(tmp_path):
     database = tmp_path / "weavexdr.db"
     store = SQLiteEventStore(database)

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import os
+import ctypes
 import secrets
 import socket
 import sys
+import subprocess
 import threading
 import time
 import webbrowser
@@ -23,14 +25,17 @@ from xdr_graph.response import ApprovalService, DryRunResponseService
 from xdr_graph.response_execution import ActualResponseService, RecoveryRegistry
 from xdr_graph.response_playbook import ResponsePlaybookService
 from xdr_graph.audit import SQLiteAuditLog
-from xdr_graph.reporting import IncidentReportExporter
+from xdr_graph.reporting import IncidentReportExporter, SecuritySummaryExporter
 from xdr_graph.self_protection import SelfProtectionMonitor
 from xdr_graph.update_manager import GitHubUpdateService
+from xdr_graph.local_model import OllamaModelManager
+from xdr_graph.model_adapter import ComparingModelAdapter, ModelAdapterError, OllamaModelAdapter
 from xdr_graph.quarantine import QuarantineStore
 from xdr_graph.risk_policy import load_default_risk_policy
 from xdr_graph.storage import PersistentIngestionService, SQLiteEventStore
 from xdr_graph.storage_maintenance import DatabaseLifecycleManager
-from xdr_graph.ingestion import NormalizedEventBatch
+from xdr_graph.ingestion import GraphIngestionService, NormalizedEventBatch
+from xdr_graph.workflow import build_workflow
 from xdr_graph.models import FileCreateEvent, Finding, IncidentReport, ValidationResult
 from xdr_graph.threat_intelligence import ContentUpdateManager, ThreatIntelStore
 from xdr_graph.sysmon_collector import SysmonCollector
@@ -214,10 +219,12 @@ def main() -> None:
     audit_log = SQLiteAuditLog(data_root / "weavexdr.db")
     runtime.audit_log = audit_log
     runtime.report_exporter = IncidentReportExporter(data_root / "reports")
+    runtime.summary_exporter = SecuritySummaryExporter(data_root / "reports" / "summaries")
     protected_roots = [Path(sys.executable)] if getattr(sys, "frozen", False) else [Path(__file__).parents[2] / "src", Path(__file__).parents[2] / "config", Path(__file__).parents[2] / "rules"]
     runtime.self_protection = SelfProtectionMonitor(data_root / "security" / "integrity-baseline.json", protected_roots)
     runtime.self_protection.initialize()
     runtime.update_service = GitHubUpdateService(APP_VERSION, data_root / "updates", public_key_base64=os.environ.get("WEAVEXDR_UPDATE_PUBLIC_KEY", ""))
+    runtime.model_manager = OllamaModelManager(data_root / "model-settings.json")
     actual_response: ActualResponseService | None = None
     quarantine_store: QuarantineStore | None = None
     # 실제 시스템 변경 기능은 구현되어 있어도 명시적 로컬 설정 없이는 절대 켜지지 않는다.
@@ -314,9 +321,42 @@ def main() -> None:
         ).start()
 
     runtime.shutdown_callback = request_shutdown
+    def apply_downloaded_update() -> dict[str, object]:
+        status = runtime.update_service.status()
+        if status.get("state") != "downloaded" or not status.get("downloaded_path") or not status.get("package_sha256"):
+            raise RuntimeError("a verified downloaded update is required")
+        install_root = Path(sys.executable).resolve().parent
+        updater = install_root / "apply_update.ps1"
+        if not getattr(sys, "frozen", False) or not (install_root / "weavexdr-release.json").is_file() or not updater.is_file():
+            raise RuntimeError("in-place update is only available from an installed or extracted release package")
+        backup = storage_manager.backup()
+        arguments = ["-NoProfile", "-ExecutionPolicy", "RemoteSigned", "-File", str(updater), "-CurrentPid", str(os.getpid()), "-ArchivePath", str(status["downloaded_path"]), "-ExpectedSha256", str(status["package_sha256"]), "-InstallRoot", str(install_root)]
+        # Program Files 설치본은 UAC 승인이 필요하다. ShellExecute의 runas를 사용해
+        # 권한을 명시적으로 요청하고, 승인된 외부 업데이터가 현재 PID 종료를 기다린다.
+        result = ctypes.windll.shell32.ShellExecuteW(None, "runas", "powershell.exe", subprocess.list2cmdline(arguments), str(install_root), 0)
+        if result <= 32:
+            raise PermissionError(f"update launcher was not approved ({result})")
+        request_shutdown()
+        return {"status": "applying", "backup_path": str(backup), "version": status.get("latest_version")}
+    runtime.update_apply_callback = apply_downloaded_update
     runtime.collector_setup_callback = request_collector_access_setup
+    def selected_local_adapter() -> OllamaModelAdapter:
+        model_status = runtime.model_manager.status()
+        if not model_status["available"] or not model_status["selected_installed"]:
+            raise ModelAdapterError("selected Ollama model is unavailable")
+        requirements = model_status.get("selected_requirements") or {}
+        return OllamaModelAdapter(model=runtime.model_manager.selected_model, timeout_seconds=max(5, int(requirements.get("latency_budget_ms", 20_000)) / 1000))
+
     ingestion_service = PersistentIngestionService(
         store,
+        graph_service=GraphIngestionService(
+            build_workflow(ComparingModelAdapter(
+                selected_local_adapter,
+                lambda: runtime.model_manager.selected_model,
+                latency_budget_ms=int((runtime.model_manager.status().get("selected_requirements") or {}).get("latency_budget_ms", 20_000)),
+            )),
+            audit_logger=audit_log,
+        ),
         event_publisher=runtime.event_broker,
     )
     watcher_stop = threading.Event()

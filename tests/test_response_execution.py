@@ -321,7 +321,10 @@ def test_playbook_simulation_and_execution_keep_step_approvals_separate():
 
     simulation = playbooks.simulate(playbook, report)
     result = playbooks.execute(playbook, report, approvals=approvals)
+    comparison = playbooks.compare(simulation, result)
 
     assert simulation.allowed is True
     assert result.status == "succeeded"
     assert [step.status for step in result.steps] == ["succeeded", "succeeded"]
+    assert comparison.actual_status == "succeeded"
+    assert all(step["matched"] for step in comparison.steps)

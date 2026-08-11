@@ -5,6 +5,7 @@ import pytest
 
 from xdr_graph.evaluation import evaluate_case, load_cases
 from xdr_graph.model_adapter import (
+    ComparingModelAdapter,
     FallbackModelAdapter,
     ModelAdapterError,
     OllamaModelAdapter,
@@ -199,3 +200,33 @@ def test_policy_guard_corrects_unsupported_model_verdict():
     assert result["report"].evidence == [
         "Executable or script created in a user-writable directory"
     ]
+
+
+def test_workflow_records_each_agent_trace_without_raw_event_payloads():
+    case = load_cases(DATASET)[0]
+    report = build_workflow().invoke({"raw_incident": case.incident.model_dump(mode="json"), "findings": []})["report"]
+    nodes = {trace.node for trace in report.agent_traces}
+    assert {"normalize", "file_analysis", "behavior_analysis", "network_analysis", "correlate", "allowlist", "synthesize", "verify", "report"} <= nodes
+    assert all(trace.duration_ms >= 0 and trace.input_count >= 0 for trace in report.agent_traces)
+
+
+def test_model_comparison_keeps_rule_decision_and_requests_evidence_on_disagreement():
+    case = load_cases(DATASET)[5]
+    model = SynthesisDecision(risk_score=100, verdict="suspicious", evidence=[], proposed_actions=[])
+    def transport(request, timeout):
+        return json.dumps({"message": {"content": model.model_dump_json()}}).encode()
+    adapter = ComparingModelAdapter(lambda: OllamaModelAdapter(model="qwen3:4b", transport=transport), lambda: "qwen3:4b")
+    report = build_workflow(adapter).invoke({"raw_incident": case.incident.model_dump(mode="json"), "findings": []})["report"]
+    assert report.risk_score == 30 and report.verdict == "benign"
+    assert report.model_comparison is not None and report.model_comparison.agreed is False
+    assert report.additional_evidence_requested is True
+    assert "collect_additional_evidence" in report.recommended_actions
+
+
+def test_ollama_adapter_rejects_non_loopback_and_extra_output_fields():
+    with pytest.raises(ValueError, match="loopback"):
+        OllamaModelAdapter(endpoint="https://models.example/api/chat")
+    def transport(request, timeout):
+        return json.dumps({"message": {"content": '{"risk_score":0,"verdict":"benign","evidence":[],"proposed_actions":[],"tool_call":"powershell"}'}}).encode()
+    with pytest.raises(ModelAdapterError):
+        OllamaModelAdapter(transport=transport).synthesize(load_cases(DATASET)[0].incident, [])

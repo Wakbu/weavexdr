@@ -173,3 +173,41 @@ class IncidentReportExporter:
     def _artifact(path: Path, media_type: str) -> ExportArtifact:
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
         return ExportArtifact(path=path, media_type=media_type, sha256=digest)
+
+
+class SecuritySummaryExporter:
+    """주·월간 추이와 MITRE 커버리지를 스크립트 없는 읽기 전용 묶음으로 만든다."""
+
+    def __init__(self, output_root: str | Path) -> None:
+        self.output_root = Path(output_root).resolve()
+        self.output_root.mkdir(parents=True, exist_ok=True)
+
+    def export(self, reports: Iterable[IncidentReport], period: str, *, now: datetime | None = None) -> ExportArtifact:
+        if period not in {"weekly", "monthly"}:
+            raise ValueError("summary period must be weekly or monthly")
+        current = (now or datetime.now(UTC)).astimezone(UTC)
+        days = 7 if period == "weekly" else 30
+        cutoff = current.timestamp() - days * 86400
+        selected = [report for report in reports if any(event.timestamp.timestamp() >= cutoff for event in report.source_events)]
+        verdicts = {name: sum(report.verdict == name for report in selected) for name in ("suspicious", "needs_review", "benign")}
+        mitre: dict[str, int] = {}
+        daily: dict[str, int] = {}
+        for report in selected:
+            for event in report.source_events:
+                if event.timestamp.timestamp() >= cutoff:
+                    key = event.timestamp.astimezone(UTC).date().isoformat(); daily[key] = daily.get(key, 0) + 1
+            for finding in report.findings:
+                for reference in finding.references:
+                    if reference.framework == "mitre_attack":
+                        mitre[reference.external_id] = mitre.get(reference.external_id, 0) + 1
+        payload = {"period": period, "window_days": days, "generated_at": current.isoformat(), "incident_count": len(selected), "verdicts": verdicts, "daily_events": dict(sorted(daily.items())), "mitre_coverage": dict(sorted(mitre.items()))}
+        title = "주간" if period == "weekly" else "월간"
+        rows = "".join(f"<tr><td>{html.escape(key)}</td><td>{value}</td></tr>" for key, value in payload["mitre_coverage"].items()) or "<tr><td colspan='2'>확인된 ATT&CK 기법 없음</td></tr>"
+        page = f"""<!doctype html><html lang='ko'><meta charset='utf-8'><meta http-equiv='Content-Security-Policy' content=\"default-src 'none'; style-src 'unsafe-inline'\"><title>WeaveXDR {title} 보안 요약</title><style>body{{font:14px Segoe UI,sans-serif;max-width:920px;margin:40px auto;color:#17202a}}h1{{border-bottom:3px solid #176b73;padding-bottom:12px}}.cards{{display:flex;gap:12px}}.card{{border:1px solid #cad4da;padding:16px;min-width:130px}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #cad4da;padding:8px;text-align:left}}</style><h1>WeaveXDR {title} 보안 요약</h1><p>{days}일 기준 · {html.escape(current.isoformat())}</p><div class='cards'><div class='card'>전체 사건<br><b>{len(selected)}</b></div><div class='card'>고위험<br><b>{verdicts['suspicious']}</b></div><div class='card'>검토 필요<br><b>{verdicts['needs_review']}</b></div></div><h2>MITRE ATT&CK 커버리지</h2><table><tr><th>기법</th><th>탐지 횟수</th></tr>{rows}</table></html>"""
+        stem = f"weavexdr-{period}-summary-{current.date().isoformat()}"; package = self.output_root / f"{stem}.zip"
+        files = {"index.html": page.encode("utf-8"), "summary.json": json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")}
+        manifest = {"generated_at": current.isoformat(), "read_only": True, "files": {name: hashlib.sha256(content).hexdigest() for name, content in files.items()}}
+        files["manifest.json"] = json.dumps(manifest, ensure_ascii=False, indent=2).encode("utf-8")
+        with zipfile.ZipFile(package, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            for name, content in files.items(): archive.writestr(name, content)
+        return IncidentReportExporter._artifact(package, "application/zip")

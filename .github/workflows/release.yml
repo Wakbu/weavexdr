@@ -21,6 +21,8 @@ jobs:
           cache: pip
       - run: python -m venv .venv
       - run: .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+      - run: .\.venv\Scripts\python.exe -m pip install pip-audit
+      - run: .\.venv\Scripts\python.exe -m pip_audit
       - run: .\.venv\Scripts\python.exe -m pytest -q
       - shell: powershell
         run: .\scripts\build_windows_package.ps1 -Version "${{ github.ref_name }}"
@@ -30,4 +32,5 @@ jobs:
           files: |
             dist/weavexdr-${{ github.ref_name }}-windows.zip
             dist/weavexdr-${{ github.ref_name }}-manifest.json
+            dist/weavexdr-${{ github.ref_name }}-sbom.json
           generate_release_notes: true

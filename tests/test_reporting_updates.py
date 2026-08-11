@@ -9,7 +9,8 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from xdr_graph.ingestion import NormalizedEventBatch
-from xdr_graph.reporting import IncidentReportExporter, redact_sensitive
+from xdr_graph.reporting import IncidentReportExporter, SecuritySummaryExporter, redact_sensitive
+from xdr_graph.update_manager import GitHubUpdateService
 from xdr_graph.self_protection import SelfProtectionMonitor
 from xdr_graph.storage import PersistentIngestionService, SQLiteEventStore
 from xdr_graph.update_manager import apply_update, verify_manifest_signature, version_key
@@ -45,6 +46,28 @@ def test_report_exporter_creates_all_formats_and_redacts_user_paths(tmp_path):
 
 def test_redaction_preserves_path_shape_without_username():
     assert redact_sensitive(r"C:\Users\Some User\AppData\file.exe") == r"C:\Users\<USER>\AppData\file.exe"
+
+
+def test_security_summary_is_read_only_hash_verified_package(tmp_path):
+    report = sample_report()
+    newest = max(event.timestamp for event in report.source_events)
+    artifact = SecuritySummaryExporter(tmp_path).export([report], "weekly", now=newest)
+    assert artifact.path.suffix == ".zip"
+    with zipfile.ZipFile(artifact.path) as archive:
+        assert set(archive.namelist()) == {"index.html", "summary.json", "manifest.json"}
+        manifest = json.loads(archive.read("manifest.json"))
+        assert manifest["read_only"] is True
+        assert b"<script" not in archive.read("index.html").lower()
+        for name, expected in manifest["files"].items():
+            assert hashlib.sha256(archive.read(name)).hexdigest() == expected
+
+
+def test_update_download_can_be_cancelled_before_next_chunk(tmp_path):
+    service = GitHubUpdateService("20260811.1", tmp_path)
+    service._status = service._status.__class__("downloading", service.current_version, "20260812.1", progress_percent=20)
+    status = service.cancel_download()
+    assert status["state"] == "cancelling"
+    assert service._cancel.is_set()
 
 
 def test_self_protection_detects_changed_and_added_files(tmp_path):

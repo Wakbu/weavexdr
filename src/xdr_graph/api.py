@@ -52,9 +52,10 @@ from xdr_graph.antivirus import ScanJobManager, ScanPolicy
 from xdr_graph.threat_intelligence import ContentUpdateManager, SigmaImporter, ThreatIntelStore
 from xdr_graph.runtime_health import RuntimeHealth, RuntimeHealthMonitor
 from xdr_graph.audit import SQLiteAuditLog
-from xdr_graph.reporting import IncidentReportExporter
+from xdr_graph.reporting import IncidentReportExporter, SecuritySummaryExporter
 from xdr_graph.self_protection import SelfProtectionMonitor
 from xdr_graph.update_manager import GitHubUpdateService
+from xdr_graph.local_model import OllamaModelManager
 
 
 _command_adapter = TypeAdapter(ResponseCommand)
@@ -110,6 +111,19 @@ class ExecuteResponseBody(BaseModel):
 
 class RestoreBody(BaseModel):
     confirmed: bool
+
+
+class UpdateApplyBody(BaseModel):
+    confirmed: bool
+
+
+class ModelSelectionBody(BaseModel):
+    model: str = Field(min_length=1, max_length=80)
+
+
+class AssistantQuestionBody(BaseModel):
+    question: str = Field(min_length=1, max_length=1000)
+    incident_id: str | None = Field(default=None, max_length=160)
 
 
 class PlaybookRequestBody(BaseModel):
@@ -214,8 +228,10 @@ class ApiRuntime:
     content_manager: ContentUpdateManager | None = None
     audit_log: SQLiteAuditLog | None = None
     report_exporter: IncidentReportExporter | None = None
+    summary_exporter: SecuritySummaryExporter | None = None
     self_protection: SelfProtectionMonitor | None = None
     update_service: GitHubUpdateService | None = None
+    model_manager: OllamaModelManager | None = None
     event_broker: IncidentEventBroker = field(default_factory=IncidentEventBroker)
     model_status: dict[str, object] = field(
         default_factory=lambda: {"provider": "rule_based", "available": True}
@@ -229,6 +245,7 @@ class ApiRuntime:
     )
     collector_setup_callback: Callable[[], None] | None = None
     shutdown_callback: Callable[[], None] | None = None
+    update_apply_callback: Callable[[], dict[str, object]] | None = None
     open_dashboard_callback: Callable[[], None] | None = None
     collector_pause_callback: Callable[[bool], None] | None = None
     scan_path_picker: Callable[[str], list[str]] | None = None
@@ -477,6 +494,15 @@ def create_app(
         response.headers["X-WeaveXDR-SHA256"] = artifact.sha256
         return response
 
+    @app.get("/reports/summary/{period}", dependencies=protected)
+    def export_security_summary(period: Literal["weekly", "monthly"]):
+        if runtime.summary_exporter is None:
+            raise HTTPException(status_code=503, detail="security summary reporting is unavailable")
+        artifact = runtime.summary_exporter.export(runtime.event_store.list_incident_reports(limit=500), period)
+        response = FileResponse(artifact.path, media_type=artifact.media_type, filename=artifact.path.name)
+        response.headers["X-WeaveXDR-SHA256"] = artifact.sha256
+        return response
+
     @app.patch("/incidents/{incident_id}/management", dependencies=protected)
     def update_incident_management(incident_id: str, body: IncidentManagementBody):
         changes = body.model_dump(exclude_unset=True)
@@ -593,7 +619,7 @@ def create_app(
             "risk_policy_version": risk.policy_version,
             "allowlist_policy_version": allowlist.policy_version,
             "allowlist_entries": [entry.model_dump(mode="json") for entry in allowlist.entries],
-            "model": runtime.model_status,
+            "model": runtime.model_manager.status() if runtime.model_manager else runtime.model_status,
             "application": {"version": APP_VERSION, "build_date": BUILD_DATE},
             "startup_enabled": startup_enabled(),
         }
@@ -613,7 +639,7 @@ def create_app(
         return {
             "api": {"state": "connected", "label": "로컬 API 정상"},
             "collector": collector_status,
-            "model": runtime.model_status,
+            "model": runtime.model_manager.status() if runtime.model_manager else runtime.model_status,
             "active_response": runtime.actual_response_service is not None,
             "response_capabilities": {
                 "process_tree": runtime.actual_response_service is not None,
@@ -654,6 +680,51 @@ def create_app(
             raise HTTPException(status_code=503, detail="update service is unavailable")
         return runtime.update_service.status()
 
+    @app.get("/models/status", dependencies=protected)
+    def local_model_status():
+        if runtime.model_manager is None:
+            raise HTTPException(status_code=503, detail="local model management is unavailable")
+        return runtime.model_manager.status(force=True)
+
+    @app.put("/models/selection", dependencies=protected)
+    def select_local_model(body: ModelSelectionBody):
+        if runtime.model_manager is None:
+            raise HTTPException(status_code=503, detail="local model management is unavailable")
+        try:
+            return runtime.model_manager.select(body.model)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+
+    @app.post("/models/install", dependencies=protected)
+    def install_local_model(body: ModelSelectionBody):
+        if runtime.model_manager is None:
+            raise HTTPException(status_code=503, detail="local model management is unavailable")
+        try:
+            return runtime.model_manager.install(body.model)
+        except (RuntimeError, ValueError) as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @app.post("/assistant/chat", dependencies=protected)
+    def local_assistant_chat(body: AssistantQuestionBody):
+        if runtime.model_manager is None:
+            raise HTTPException(status_code=503, detail="local model management is unavailable")
+        incidents = runtime.event_store.list_incident_views(limit=12, sort="updated_desc")
+        if body.incident_id:
+            incidents = [item for item in incidents if item.get("incident_id") == body.incident_id] or incidents
+        # 대화에는 최근 사건의 최소 요약만 전달하며 원본 파일 내용이나 인증 정보는 포함하지 않는다.
+        context = json.dumps([
+            {"incident_id": item.get("incident_id"), "verdict": item.get("verdict"), "risk_score": item.get("risk_score"),
+             "findings": [finding.get("reason", "") for finding in item.get("findings", [])[:5]],
+             "event_types": [event.get("event_type", "unknown") for event in item.get("source_events", [])[:20]]}
+            for item in incidents
+        ], ensure_ascii=False)
+        try:
+            return runtime.model_manager.chat(body.question, context)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        except RuntimeError as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
+
     @app.post("/updates/check", dependencies=protected)
     def check_updates():
         if runtime.update_service is None:
@@ -665,6 +736,23 @@ def create_app(
         if runtime.update_service is None:
             raise HTTPException(status_code=503, detail="update service is unavailable")
         return runtime.update_service.download_latest()
+
+    @app.post("/updates/cancel", dependencies=protected)
+    def cancel_update_download():
+        if runtime.update_service is None:
+            raise HTTPException(status_code=503, detail="update service is unavailable")
+        return runtime.update_service.cancel_download()
+
+    @app.post("/updates/apply", dependencies=protected)
+    def apply_downloaded_update(body: UpdateApplyBody):
+        if not body.confirmed:
+            raise HTTPException(status_code=403, detail="update apply requires explicit confirmation")
+        if runtime.update_apply_callback is None:
+            raise HTTPException(status_code=503, detail="in-place update is unavailable for this run mode")
+        try:
+            return runtime.update_apply_callback()
+        except (FileNotFoundError, PermissionError, RuntimeError, ValueError) as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
 
     @app.get("/runtime/health", response_model=RuntimeHealth, dependencies=protected)
     def runtime_health():

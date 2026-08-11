@@ -184,6 +184,30 @@ class ValidationResult(BaseModel):
     review_count: int
 
 
+class AgentTrace(BaseModel):
+    node: str
+    duration_ms: float = Field(ge=0)
+    input_count: int = Field(ge=0)
+    output_count: int = Field(ge=0)
+    evidence_event_ids: list[str] = Field(default_factory=list)
+    status: Literal["succeeded", "fallback"] = "succeeded"
+
+
+class ModelComparison(BaseModel):
+    provider: str
+    model: str
+    rule_risk_score: int = Field(ge=0, le=100)
+    rule_verdict: Literal["benign", "needs_review", "suspicious"]
+    model_risk_score: int = Field(ge=0, le=100)
+    model_verdict: Literal["benign", "needs_review", "suspicious"]
+    agreed: bool
+    uncertainty_score: int = Field(ge=0, le=100)
+    fallback_used: bool = False
+    latency_ms: float = Field(default=0, ge=0)
+    latency_budget_ms: int = Field(default=20000, ge=1)
+    budget_exceeded: bool = False
+
+
 class IncidentReport(BaseModel):
     incident_id: str
     verdict: Literal["benign", "needs_review", "suspicious"]
@@ -195,6 +219,10 @@ class IncidentReport(BaseModel):
     suppressed_findings: list[SuppressedFinding] = Field(default_factory=list)
     attack_chains: list[AttackChain] = Field(default_factory=list)
     source_events: list[SecurityEvent] = Field(default_factory=list)
+    agent_traces: list[AgentTrace] = Field(default_factory=list)
+    model_comparison: ModelComparison | None = None
+    uncertainty_score: int = Field(default=0, ge=0, le=100)
+    additional_evidence_requested: bool = False
 
 
 class IncidentState(TypedDict, total=False):
@@ -211,3 +239,7 @@ class IncidentState(TypedDict, total=False):
     validation_errors: list[str]
     review_count: int
     report: IncidentReport
+    agent_traces: Annotated[list[AgentTrace], operator.add]
+    model_comparison: ModelComparison
+    uncertainty_score: int
+    additional_evidence_requested: bool

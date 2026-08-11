@@ -10,6 +10,10 @@ python scripts/validate_release.py
 
 회귀 묶음은 실행 그래프, 로컬 모델 규칙 대체, Sysmon 실시간 수집 작업자, 수집 버퍼 재시도, 파일 검사 오류, 대응 실패·복구, API 토큰의 HttpOnly 세션 교환, 지식 그래프와 장기 반복 입력을 포함한다. 반복 입력 검사는 공유 엔티티가 중복 노드로 증가하지 않고 250개 사건을 제한 시간 안에 처리하는지 확인한다.
 
+장시간 운영 증적은 `python scripts/run_operational_matrix.py --duration-seconds 86400 --sample-seconds 60 --output artifacts/soak-24h.json`처럼 생성한다. 7일 검사는 시간을 `604800`으로 바꾼다. 이 하네스의 구현·단기 회귀 통과와 실제 24시간·7일 Windows VM 완료 증적은 별도 상태로 관리한다.
+
+릴리스 공급망 검사는 CI의 `pip-audit`와 `scripts/generate_supply_chain_report.py`가 담당한다. 코드 서명 인증서가 준비된 환경에서는 `WEAVEXDR_SIGNING_THUMBPRINT`를 설정하고 `scripts/sign_windows_release.ps1`을 사용한다.
+
 ## 실행 권한과 비밀
 
 분석과 대시보드는 일반 사용자 권한으로 실행한다. 실제 대응은 기본 비활성화하며 방화벽·서비스 작업만 별도 관리자 작업자로 분리한다. API 토큰과 지식 그래프 개인정보 salt는 각각 `WEAVEXDR_API_TOKEN`, `WEAVEXDR_PRIVACY_SALT` 환경 변수로만 전달하며 설정 파일이나 로그에 기록하지 않는다.

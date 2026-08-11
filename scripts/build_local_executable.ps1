@@ -27,6 +27,7 @@ try {
         --add-data "$(Join-Path $projectRoot 'src\xdr_graph\static');xdr_graph/static" `
         --add-data "$(Join-Path $projectRoot 'rules');xdr_graph/rules" `
         --add-data "$(Join-Path $projectRoot 'scripts\configure_sysmon_access.ps1');xdr_graph/tools" `
+        --add-data "$(Join-Path $projectRoot 'scripts\apply_update.ps1');xdr_graph/tools" `
         --collect-all langgraph `
         --collect-all charset_normalizer `
         --collect-all uvicorn `

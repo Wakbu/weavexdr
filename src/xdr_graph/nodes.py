@@ -59,10 +59,16 @@ def apply_allowlist(
 
 
 def synthesize_incident(state: IncidentState, model_adapter: ModelAdapter) -> dict:
-    decision = model_adapter.synthesize(
-        state["incident"], state.get("effective_findings", state.get("findings", []))
-    )
-    return decision.model_dump()
+    findings = state.get("effective_findings", state.get("findings", []))
+    comparison_method = getattr(model_adapter, "synthesize_with_comparison", None)
+    if comparison_method:
+        decision, comparison = comparison_method(state["incident"], findings)
+        output = decision.model_dump(); output["model_comparison"] = comparison
+        output["uncertainty_score"] = comparison.uncertainty_score
+        output["additional_evidence_requested"] = comparison.uncertainty_score >= 20
+        return output
+    decision = model_adapter.synthesize(state["incident"], findings)
+    return {**decision.model_dump(), "uncertainty_score": 0, "additional_evidence_requested": False}
 
 
 def verify_incident(state: IncidentState) -> dict:
@@ -115,7 +121,9 @@ def reassess_incident(state: IncidentState) -> dict:
 def create_report(state: IncidentState) -> dict:
     validation_errors = state.get("validation_errors", [])
     verdict = "needs_review" if validation_errors else state["verdict"]
-    actions = ["collect_additional_evidence"] if validation_errors else state["proposed_actions"]
+    actions = ["collect_additional_evidence"] if validation_errors else list(state["proposed_actions"])
+    if state.get("additional_evidence_requested") and "collect_additional_evidence" not in actions:
+        actions.append("collect_additional_evidence")
     report = IncidentReport(
         incident_id=state["incident"].incident_id,
         verdict=verdict,
@@ -131,5 +139,9 @@ def create_report(state: IncidentState) -> dict:
         suppressed_findings=state.get("suppressed_findings", []),
         attack_chains=state.get("attack_chains", []),
         source_events=state["incident"].events,
+        agent_traces=state.get("agent_traces", []),
+        model_comparison=state.get("model_comparison"),
+        uncertainty_score=state.get("uncertainty_score", 0),
+        additional_evidence_requested=state.get("additional_evidence_requested", False),
     )
     return {"report": report}

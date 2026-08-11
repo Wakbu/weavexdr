@@ -28,6 +28,10 @@ $portableExecutable = Join-Path $PSScriptRoot "WeaveXDR.exe"
 if (Test-Path -LiteralPath $portableExecutable -PathType Leaf) {
     Copy-Item -LiteralPath $portableExecutable -Destination (Join-Path $InstallRoot "WeaveXDR.exe") -Force
 }
+foreach ($packageFile in @('weavexdr-release.json','apply_update.ps1','recover_weavexdr_network.ps1')) {
+    $source = Join-Path $PSScriptRoot $packageFile
+    if (Test-Path -LiteralPath $source -PathType Leaf) { Copy-Item -LiteralPath $source -Destination (Join-Path $InstallRoot $packageFile) -Force }
+}
 $venvPath = Join-Path $InstallRoot "venv"
 py -3.11 -m venv $venvPath
 $pythonPath = Join-Path $venvPath "Scripts\python.exe"

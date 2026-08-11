@@ -1,5 +1,5 @@
 ﻿param(
-    [string]$Version = "20260811.2"
+    [string]$Version = "20260811.3"
 )
 
 $ErrorActionPreference = "Stop"
@@ -9,6 +9,9 @@ $stageRoot = Join-Path $distRoot "weavexdr-$Version-windows"
 $pythonPath = Join-Path $projectRoot ".venv\Scripts\python.exe"
 if (-not (Test-Path -LiteralPath $pythonPath -PathType Leaf)) { throw "Project virtual environment was not found." }
 & (Join-Path $PSScriptRoot "build_local_executable.ps1")
+if ($env:WEAVEXDR_SIGNING_THUMBPRINT) {
+    & (Join-Path $PSScriptRoot "sign_windows_release.ps1") -FilePath (Join-Path $projectRoot "WeaveXDR.exe")
+}
 New-Item -ItemType Directory -Path $distRoot -Force | Out-Null
 & $pythonPath -m pip wheel $projectRoot --no-deps --wheel-dir $distRoot
 if (Test-Path -LiteralPath $stageRoot) { Remove-Item -LiteralPath $stageRoot -Recurse -Force }
@@ -20,6 +23,8 @@ Copy-Item -LiteralPath (Join-Path $PSScriptRoot "install.ps1") -Destination $sta
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "install_wizard.ps1") -Destination $stageRoot
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "uninstall.ps1") -Destination $stageRoot
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "configure_sysmon_access.ps1") -Destination $stageRoot
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot "apply_update.ps1") -Destination $stageRoot
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot "recover_weavexdr_network.ps1") -Destination $stageRoot
 $manifest = @{ version = $Version; format = "weavexdr-windows-package-v1" } | ConvertTo-Json
 Set-Content -LiteralPath (Join-Path $stageRoot "weavexdr-release.json") -Value $manifest -Encoding utf8
 $archivePath = Join-Path $distRoot "weavexdr-$Version-windows.zip"
@@ -46,6 +51,8 @@ $updateManifest | ConvertTo-Json | Set-Content -LiteralPath $updateManifestPath 
 if ($env:WEAVEXDR_UPDATE_PRIVATE_KEY) {
     & $pythonPath (Join-Path $PSScriptRoot "sign_release_manifest.py") $updateManifestPath
 }
+$sbomPath = Join-Path $distRoot "weavexdr-$Version-sbom.json"
+& $pythonPath (Join-Path $PSScriptRoot "generate_supply_chain_report.py") --output $sbomPath --asset $archivePath --asset $updateManifestPath
 
 # dist는 로컬 전달·검증용 공간이므로 최신 세 버전만 유지한다. GitHub 릴리스는
 # 별도 보존되며, wheel처럼 버전 폴더 규칙과 무관한 파일은 삭제하지 않는다.

@@ -9,7 +9,7 @@ import urllib.request
 import zipfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from threading import RLock
+from threading import Event, RLock
 from typing import Any
 
 
@@ -67,6 +67,7 @@ class GitHubUpdateService:
         self.repository = repository
         self.public_key_base64 = public_key_base64.strip()
         self._lock = RLock()
+        self._cancel = Event()
         self._status = UpdateStatus("idle", current_version)
 
     def status(self) -> dict[str, object]:
@@ -97,6 +98,7 @@ class GitHubUpdateService:
         return asdict(status)
 
     def download_latest(self) -> dict[str, object]:
+        self._cancel.clear()
         current = self.check_latest()
         if current["state"] != "available":
             return current
@@ -109,6 +111,8 @@ class GitHubUpdateService:
                 expected_length = int(response.headers.get("Content-Length") or 0)
                 received = 0
                 while chunk := response.read(1024 * 256):
+                    if self._cancel.is_set():
+                        raise InterruptedError("update download cancelled")
                     received += len(chunk)
                     if received > 1024 * 1024 * 500:
                         raise ValueError("update package exceeds 500 MiB limit")
@@ -125,6 +129,19 @@ class GitHubUpdateService:
         with self._lock:
             self._status = status
         return asdict(status)
+
+    def cancel_download(self) -> dict[str, object]:
+        """다운로드 스레드가 다음 청크 경계에서 안전하게 임시 파일을 폐기하게 한다."""
+        self._cancel.set()
+        with self._lock:
+            current = self._status
+            if current.state == "downloading":
+                self._status = UpdateStatus(
+                    "cancelling", self.current_version, current.latest_version,
+                    current.package_url, current.package_sha256, current.release_url,
+                    current.signature, progress_percent=current.progress_percent,
+                )
+            return asdict(self._status)
 
     @staticmethod
     def _json(url: str) -> dict[str, Any]:
