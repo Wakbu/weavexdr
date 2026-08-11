@@ -40,7 +40,7 @@ def build_svg(source: Path) -> str:
             "<!-- Natural Earth 1:110m Admin 0 countries, public domain. -->",
             "<style>",
             ".country{fill:#242c33;stroke:#46525d;stroke-width:.32;vector-effect:non-scaling-stroke}",
-            ".country-kor,.country-jpn{fill:#34414a;stroke:#9aabb6;stroke-width:.7}",
+            ".country-kor{fill:#34414a;stroke:#9aabb6;stroke-width:.7}",
             "</style>",
             *paths,
             "</svg>",

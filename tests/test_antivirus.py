@@ -5,6 +5,8 @@ import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
 from xdr_graph.antivirus import AdvancedFileScanner, ArchiveAnalyzer, InspectionCache, ScanJobManager, ScanPolicy
 from xdr_graph.file_scanner import DefenderResult, FileInspectionResult, FileMetadata, SignatureResult
 
@@ -107,3 +109,44 @@ def test_scan_job_reports_inaccessible_requested_path(tmp_path) -> None:
     assert job.state == "failed"
     assert "accessible" in (job.error or "")
     manager.close()
+
+
+def test_scan_manager_rejects_overlap_then_allows_next_completed_scan(tmp_path) -> None:
+    class SlowEngine(FakeEngine):
+        def inspect(self, file_path: str | Path, *, event_id: str) -> FileInspectionResult:
+            time.sleep(.08)
+            return super().inspect(file_path, event_id=event_id)
+
+    for index in range(4):
+        (tmp_path / f"sample-{index}.bin").write_bytes(b"safe")
+    manager = ScanJobManager(AdvancedFileScanner(SlowEngine()), file_workers=2)
+    first = manager.start([str(tmp_path)], profile="custom")
+    with pytest.raises(RuntimeError, match="already running"):
+        manager.start([str(tmp_path)], profile="custom")
+    for _ in range(100):
+        first = manager.get(first.job_id)
+        if first.state == "completed":
+            break
+        time.sleep(.01)
+    second = manager.start([str(tmp_path)], profile="custom")
+    for _ in range(100):
+        second = manager.get(second.job_id)
+        if second.state == "completed":
+            break
+        time.sleep(.01)
+    assert first.state == second.state == "completed"
+    manager.close()
+
+
+def test_scan_enumeration_reports_discovered_files(tmp_path) -> None:
+    for index in range(3):
+        (tmp_path / f"sample-{index}.exe").write_bytes(b"MZ")
+    reports: list[tuple[Path, int]] = []
+
+    files = ScanJobManager._expand_roots(
+        [tmp_path], "custom", progress=lambda path, count: reports.append((path, count))
+    )
+
+    assert len(files) == 3
+    assert reports
+    assert reports[-1][1] == 3

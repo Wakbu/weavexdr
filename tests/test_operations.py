@@ -11,7 +11,7 @@ from xdr_graph.desktop import (
     choose_server_port,
     verify_embedded_server,
 )
-from xdr_graph.release_validation import validate_windows_package
+from xdr_graph.release_validation import validate_update_manifest, validate_windows_package
 from xdr_graph.update_manager import apply_update, rollback_update
 from xdr_graph.windows_service import SERVICE_NAME
 
@@ -135,6 +135,14 @@ def test_windows_package_validation_checks_version_and_required_files(tmp_path):
         package.writestr("personal_xdr_graph-0.1.0.whl", b"placeholder")
         package.writestr("weavexdr-release.json", json.dumps({"version": "20260809.1"}))
     assert validate_windows_package(package_path) == []
+
+
+def test_update_manifest_validation_checks_package_hash(tmp_path):
+    package = tmp_path / "weavexdr-20260811.2-windows.zip"
+    package.write_bytes(b"release")
+    manifest = tmp_path / "weavexdr-20260811.2-manifest.json"
+    manifest.write_text(json.dumps({"version": "20260811.2", "package_name": package.name, "package_sha256": hashlib.sha256(package.read_bytes()).hexdigest()}), encoding="utf-8")
+    assert validate_update_manifest(manifest) == []
 
 
 def test_sysmon_access_script_is_powershell5_safe_and_reads_acl_attribute():

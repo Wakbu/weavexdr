@@ -32,6 +32,7 @@ try {
         --collect-all uvicorn `
         --collect-all anyio `
         --collect-all yaml `
+        --collect-all reportlab `
         --hidden-import win32api `
         --hidden-import win32con `
         --hidden-import win32gui `

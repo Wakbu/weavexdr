@@ -7,6 +7,7 @@ import sqlite3
 import struct
 import tempfile
 import threading
+import time
 import zipfile
 import json
 import shutil
@@ -294,6 +295,7 @@ class ScanJob(BaseModel):
     defender_threats: list[str] = Field(default_factory=list)
     requested_paths: int = 0
     resolved_roots: int = 0
+    enumerated_files: int = 0
     error: str | None = None
     results: list[AdvancedInspection] = Field(default_factory=list)
 
@@ -324,6 +326,10 @@ class ScanJobManager:
     def start(self, paths: list[str], *, profile: Literal["quick", "full", "custom"] = "custom") -> ScanJob:
         job = ScanJob(job_id=f"scan-{uuid4().hex[:12]}", profile=profile, requested_paths=len(paths))
         with self._lock:
+            # 단일 작업 실행기 뒤에 새 검사를 조용히 쌓으면 UI는 0%에서 멈춘 것처럼
+            # 보인다. 기존 검사가 Defender 단계까지 끝난 뒤에만 새 작업을 받는다.
+            if any(value.state in {"queued", "running"} for value in self._jobs.values()):
+                raise RuntimeError("another file scan is already running")
             self._jobs[job.job_id] = job
             self._cancel[job.job_id] = threading.Event()
         # 파일 열거도 큰 임시 폴더에서는 오래 걸릴 수 있으므로 API 요청 스레드에서 분리한다.
@@ -347,8 +353,20 @@ class ScanJobManager:
             roots = self._profile_roots(paths, profile)
             if paths and not roots:
                 raise ValueError("no requested scan path is accessible")
-            files = self._expand_roots(roots, profile)
-            self._update(job_id, total_files=len(files), resolved_roots=len(roots), phase="scanning")
+            last_enumeration_update = 0.0
+
+            def report_enumeration(directory: Path, discovered: int) -> None:
+                nonlocal last_enumeration_update
+                now = time.monotonic()
+                if now - last_enumeration_update >= .2:
+                    self._update(job_id, enumerated_files=discovered, total_files=discovered, current_path=str(directory))
+                    last_enumeration_update = now
+
+            files = self._expand_roots(roots, profile, progress=report_enumeration, cancel=self._cancel[job_id])
+            if self._cancel[job_id].is_set():
+                self._update(job_id, state="cancelled", current_path=None)
+                return
+            self._update(job_id, total_files=len(files), enumerated_files=len(files), resolved_roots=len(roots), phase="scanning", current_path=None)
             defender_future = self._defender_executor.submit(self.scanner.scan_roots_with_defender, roots)
             started = datetime.now(UTC)
 
@@ -433,7 +451,14 @@ class ScanJobManager:
         return roots
 
     @classmethod
-    def _expand_roots(cls, roots: list[Path], profile: str) -> list[Path]:
+    def _expand_roots(
+        cls,
+        roots: list[Path],
+        profile: str,
+        *,
+        progress: Callable[[Path, int], None] | None = None,
+        cancel: threading.Event | None = None,
+    ) -> list[Path]:
         files: list[Path] = []
         seen: set[str] = set()
         recent_cutoff = datetime.now(UTC).timestamp() - 30 * 86400
@@ -443,10 +468,14 @@ class ScanJobManager:
             elif root.is_dir():
                 candidates = []
                 for directory, directory_names, file_names in os.walk(root, onerror=lambda _error: None):
+                    if cancel and cancel.is_set():
+                        return files
                     if profile == "quick":
                         directory_names[:] = [name for name in directory_names if name.lower() not in cls.QUICK_SKIP_DIRECTORIES]
                     for name in file_names:
                         candidates.append(Path(directory) / name)
+                    if progress:
+                        progress(Path(directory), len(files) + len(candidates))
             else:
                 continue
             for entry in candidates:
@@ -462,6 +491,8 @@ class ScanJobManager:
                 if key not in seen:
                     seen.add(key)
                     files.append(entry)
+            if progress:
+                progress(root, len(files))
         return files
 
     def _update(self, job_id: str, **changes: object) -> None:

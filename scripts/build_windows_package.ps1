@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "20260809.1"
+    [string]$Version = "20260811.2"
 )
 
 $ErrorActionPreference = "Stop"
@@ -33,6 +33,19 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
     [System.IO.Compression.CompressionLevel]::Optimal,
     $false
 )
+$packageHash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
+$updateManifestPath = Join-Path $distRoot "weavexdr-$Version-manifest.json"
+$updateManifest = [ordered]@{
+    version = $Version
+    package_name = [System.IO.Path]::GetFileName($archivePath)
+    package_sha256 = $packageHash
+    repository = "Wakbu/weavexdr"
+    created_at = [DateTime]::UtcNow.ToString("o")
+}
+$updateManifest | ConvertTo-Json | Set-Content -LiteralPath $updateManifestPath -Encoding utf8
+if ($env:WEAVEXDR_UPDATE_PRIVATE_KEY) {
+    & $pythonPath (Join-Path $PSScriptRoot "sign_release_manifest.py") $updateManifestPath
+}
 
 # dist는 로컬 전달·검증용 공간이므로 최신 세 버전만 유지한다. GitHub 릴리스는
 # 별도 보존되며, wheel처럼 버전 폴더 규칙과 무관한 파일은 삭제하지 않는다.
@@ -65,3 +78,4 @@ foreach ($expiredVersion in $expiredVersions) {
     }
 }
 Write-Host $archivePath
+Write-Host $updateManifestPath

@@ -5,11 +5,14 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from xdr_graph.api import ApiRuntime, create_app
+from xdr_graph.audit import SQLiteAuditLog
 from xdr_graph.ingestion import NormalizedEventBatch
 from xdr_graph.response import ApprovalService, DryRunResponseService
 from xdr_graph.storage import PersistentIngestionService, SQLiteEventStore
 from xdr_graph.storage_maintenance import DatabaseLifecycleManager
 from xdr_graph.runtime_health import RuntimeHealthMonitor
+from xdr_graph.reporting import IncidentReportExporter
+from xdr_graph.self_protection import SelfProtectionMonitor
 
 
 TOKEN = "test-token-with-at-least-thirty-two-characters"
@@ -314,4 +317,45 @@ def test_collector_setup_requires_authentication_and_runs_explicit_callback():
         assert response.json() == {"status": "elevation_requested"}
         assert requested.wait(timeout=1)
     finally:
+        store.close()
+
+
+def test_report_integrity_and_update_endpoints(tmp_path):
+    client, store = build_client()
+    audit = SQLiteAuditLog(":memory:")
+    protected = tmp_path / "policy.json"
+    protected.write_text('{"enabled": true}', encoding="utf-8")
+    integrity = SelfProtectionMonitor(tmp_path / "baseline.json", [protected])
+    integrity.initialize()
+
+    class FakeUpdates:
+        def status(self):
+            return {"state": "idle", "current_version": "20260811.2"}
+
+        def check_latest(self):
+            return {"state": "current", "current_version": "20260811.2", "latest_version": "20260811.2"}
+
+        def download_latest(self):
+            return {"state": "current", "current_version": "20260811.2"}
+
+    runtime = ApiRuntime(
+        event_store=store,
+        dry_run_service=DryRunResponseService(),
+        approval_service=ApprovalService(),
+        audit_log=audit,
+        report_exporter=IncidentReportExporter(tmp_path / "reports"),
+        self_protection=integrity,
+        update_service=FakeUpdates(),
+    )
+    api_client = TestClient(create_app(runtime, api_token=TOKEN, enforce_loopback=False))
+    try:
+        report = api_client.post("/incidents/incident-001/export", headers=AUTH, json={"format": "pdf"})
+        assert report.status_code == 200
+        assert report.content.startswith(b"%PDF")
+        assert len(report.headers["X-WeaveXDR-SHA256"]) == 64
+        assert api_client.get("/audit/status", headers=AUTH).json()["integrity_ok"] is True
+        assert api_client.get("/security/integrity", headers=AUTH).json()["state"] == "healthy"
+        assert api_client.post("/updates/check", headers=AUTH).json()["state"] == "current"
+    finally:
+        audit.close()
         store.close()

@@ -23,6 +23,9 @@ from xdr_graph.response import ApprovalService, DryRunResponseService
 from xdr_graph.response_execution import ActualResponseService, RecoveryRegistry
 from xdr_graph.response_playbook import ResponsePlaybookService
 from xdr_graph.audit import SQLiteAuditLog
+from xdr_graph.reporting import IncidentReportExporter
+from xdr_graph.self_protection import SelfProtectionMonitor
+from xdr_graph.update_manager import GitHubUpdateService
 from xdr_graph.quarantine import QuarantineStore
 from xdr_graph.risk_policy import load_default_risk_policy
 from xdr_graph.storage import PersistentIngestionService, SQLiteEventStore
@@ -206,11 +209,20 @@ def main() -> None:
         recovery_state=asdict(recovery_report),
         scan_path_picker=select_scan_paths,
     )
-    response_resources: tuple[ActualResponseService, QuarantineStore, SQLiteAuditLog] | None = None
+    # 감사 체인은 실제 대응 활성화 여부와 무관하게 분석·업데이트·복구 상태를
+    # 검증해야 하므로 모든 실행 모드에서 연다.
+    audit_log = SQLiteAuditLog(data_root / "weavexdr.db")
+    runtime.audit_log = audit_log
+    runtime.report_exporter = IncidentReportExporter(data_root / "reports")
+    protected_roots = [Path(sys.executable)] if getattr(sys, "frozen", False) else [Path(__file__).parents[2] / "src", Path(__file__).parents[2] / "config", Path(__file__).parents[2] / "rules"]
+    runtime.self_protection = SelfProtectionMonitor(data_root / "security" / "integrity-baseline.json", protected_roots)
+    runtime.self_protection.initialize()
+    runtime.update_service = GitHubUpdateService(APP_VERSION, data_root / "updates", public_key_base64=os.environ.get("WEAVEXDR_UPDATE_PUBLIC_KEY", ""))
+    actual_response: ActualResponseService | None = None
+    quarantine_store: QuarantineStore | None = None
     # 실제 시스템 변경 기능은 구현되어 있어도 명시적 로컬 설정 없이는 절대 켜지지 않는다.
     # UI의 dry-run과 영향 미리보기는 기본 모드에서도 계속 사용할 수 있다.
     if os.environ.get("WEAVEXDR_ENABLE_ACTIVE_RESPONSE") == "1":
-        audit_log = SQLiteAuditLog(data_root / "weavexdr.db")
         quarantine_store = QuarantineStore(data_root / "quarantine", data_root / "weavexdr.db")
         actual_response = ActualResponseService(
             dry_run_service,
@@ -221,7 +233,6 @@ def main() -> None:
         )
         runtime.actual_response_service = actual_response
         runtime.playbook_service = ResponsePlaybookService(actual_response)
-        response_resources = (actual_response, quarantine_store, audit_log)
     runtime.threat_intel_store = ThreatIntelStore(data_root / "threat-intel.db")
     runtime.content_manager = ContentUpdateManager(data_root / "content")
     if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
@@ -266,10 +277,11 @@ def main() -> None:
         load_default_risk_policy()
         verify_embedded_server(app)
         runtime.scan_manager.close()
-        if response_resources:
-            response_resources[0].close()
-            response_resources[1].close()
-            response_resources[2].close()
+        if actual_response:
+            actual_response.close()
+        if quarantine_store:
+            quarantine_store.close()
+        audit_log.close()
         store.close()
         logger.info("desktop runtime smoke test passed")
         return
@@ -428,10 +440,11 @@ def main() -> None:
             response_expiry_thread.join(timeout=5)
         runtime.scan_manager.close()
         # 종료 버튼과 예외 종료 모두 DB 핸들을 닫아 업데이트·백업 시 파일 잠금이 남지 않게 한다.
-        if response_resources:
-            response_resources[0].close()
-            response_resources[1].close()
-            response_resources[2].close()
+        if actual_response:
+            actual_response.close()
+        if quarantine_store:
+            quarantine_store.close()
+        audit_log.close()
         store.close()
         runtime_recovery.complete()
         logger.info("desktop runtime stopped")

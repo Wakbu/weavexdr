@@ -121,6 +121,13 @@ Windows 설치 ZIP은 신규 설치용이며 실행 중인 설치 폴더에 직�
 ## 릴리스 후보 확인
 
 `python -m pytest` 전체 통과, `python scripts/validate_release.py` 통과, 일반 모드 EXE의 health·dashboard·인증 API·종료 확인, 설치 ZIP 구성과 버전 형식, UTF-8 한국어/영어 표시, GitHub 릴리스 본문과 다운로드 자산을 확인한다.
+
+## 업데이트와 증적 내보내기
+
+- 앱 시작 시 최신 GitHub 릴리스를 자동 확인하고 설정 화면에서 검증된 Windows ZIP을 내려받는다.
+- 다운로드 매니페스트의 버전·파일명·SHA-256과 선택적 Ed25519 서명을 확인하며 낮은 버전은 설치하지 않는다.
+- 조사 화면에서 PDF·CSV·STIX JSON과 SHA-256 매니페스트가 포함된 증거 ZIP을 생성한다.
+- 장시간 안정성 검사는 `scripts/run_soak_test.py`의 실행 시간을 24시간 또는 7일로 지정해 같은 흐름으로 반복한다.
 # 확장 수집과 파일 검사 운영
 
 - 설정 화면의 소스별 손실·지연·오류 상태를 확인한다.

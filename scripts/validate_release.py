@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from xdr_graph.release_validation import validate_release_tree, validate_windows_package
+from xdr_graph.release_validation import validate_release_tree, validate_update_manifest, validate_windows_package
 
 
 def main() -> int:
@@ -9,6 +9,8 @@ def main() -> int:
     packages = sorted((project_root / "dist").glob("weavexdr-*-windows.zip"))
     if packages:
         errors.extend(validate_windows_package(packages[-1]))
+        version = packages[-1].name.removeprefix("weavexdr-").removesuffix("-windows.zip")
+        errors.extend(validate_update_manifest(project_root / "dist" / f"weavexdr-{version}-manifest.json"))
     if errors:
         for error in errors:
             print(f"ERROR: {error}")

@@ -21,3 +21,27 @@ python scripts/validate_release.py
 정식 릴리스 지정 전에는 스모크 모드뿐 아니라 일반 실행 모드의 EXE를 별도 프로세스로 시작해 같은 두 URL을 다시 확인한다. GitHub 릴리스 설명은 한국어·영어를 병기하고 주요 변경, 검증, 다운로드와 체크섬을 Markdown 헤더로 구분한다.
 
 PyInstaller 빌드에는 문자열로 로드되는 Uvicorn 하위 모듈과 FastAPI 동기 엔드포인트가 사용하는 `anyio._backends`를 명시적으로 포함한다. 창 없는 EXE는 직접 호출하지 않고 프로세스 종료를 기다려 스모크 테스트의 실제 exit code를 확인한다.
+
+## GitHub CLI 인증 유지
+
+브라우저 로그인을 Windows 자격 증명 관리자에 저장하고 Git이 같은 인증을 사용하게 한다.
+
+```powershell
+gh auth login -h github.com -p https -w
+gh auth setup-git
+gh auth status
+```
+
+사용자 환경 변수 `GH_TOKEN`이 만료 토큰으로 남아 있으면 저장된 로그인을 덮어쓴다. `gh auth status`에 환경 변수 토큰이 표시될 때만 다음 명령으로 제거하고 새 터미널을 연다.
+
+```powershell
+[Environment]::SetEnvironmentVariable('GH_TOKEN', $null, 'User')
+Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue
+```
+
+릴리스 안정성 검사는 짧은 반복부터 24시간·7일 실행까지 같은 하네스를 사용한다.
+
+```powershell
+python scripts/run_soak_test.py --duration-seconds 60
+python scripts/run_soak_test.py --duration-seconds 86400
+```

@@ -19,7 +19,7 @@ from uuid import uuid4
 
 import uvicorn
 from fastapi import Cookie, Depends, FastAPI, Header, HTTPException, Request, Response, status
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, TypeAdapter
 
@@ -51,6 +51,10 @@ from xdr_graph.version import APP_VERSION, BUILD_DATE
 from xdr_graph.antivirus import ScanJobManager, ScanPolicy
 from xdr_graph.threat_intelligence import ContentUpdateManager, SigmaImporter, ThreatIntelStore
 from xdr_graph.runtime_health import RuntimeHealth, RuntimeHealthMonitor
+from xdr_graph.audit import SQLiteAuditLog
+from xdr_graph.reporting import IncidentReportExporter
+from xdr_graph.self_protection import SelfProtectionMonitor
+from xdr_graph.update_manager import GitHubUpdateService
 
 
 _command_adapter = TypeAdapter(ResponseCommand)
@@ -168,6 +172,12 @@ class StixImportBody(BaseModel):
     source: str = Field(default="stix", min_length=1)
 
 
+class ReportExportBody(BaseModel):
+    format: Literal["html", "pdf", "csv", "json", "stix", "evidence"]
+    redact: bool = True
+    include_notes: bool = True
+
+
 class SigmaImportBody(BaseModel):
     payload: str = Field(min_length=1, max_length=5_000_000)
 
@@ -202,6 +212,10 @@ class ApiRuntime:
     scan_manager: ScanJobManager | None = None
     threat_intel_store: ThreatIntelStore | None = None
     content_manager: ContentUpdateManager | None = None
+    audit_log: SQLiteAuditLog | None = None
+    report_exporter: IncidentReportExporter | None = None
+    self_protection: SelfProtectionMonitor | None = None
+    update_service: GitHubUpdateService | None = None
     event_broker: IncidentEventBroker = field(default_factory=IncidentEventBroker)
     model_status: dict[str, object] = field(
         default_factory=lambda: {"provider": "rule_based", "available": True}
@@ -446,6 +460,23 @@ def create_app(
             raise HTTPException(status_code=404, detail="incident was not found")
         return report
 
+    @app.post("/incidents/{incident_id}/export", dependencies=protected)
+    def export_incident(incident_id: str, body: ReportExportBody):
+        if runtime.report_exporter is None:
+            raise HTTPException(status_code=503, detail="incident reporting is unavailable")
+        report = runtime.event_store.load_incident_report(incident_id)
+        view = runtime.event_store.load_incident_view(incident_id)
+        if report is None or view is None:
+            raise HTTPException(status_code=404, detail="incident was not found")
+        audit_records = [record for record in runtime.audit_log.list_records() if record.details.get("incident_id") == incident_id] if runtime.audit_log else []
+        try:
+            artifact = runtime.report_exporter.export(report, dict(view["management"]), body.format, audit_records=audit_records, redact=body.redact, include_notes=body.include_notes)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        response = FileResponse(artifact.path, media_type=artifact.media_type, filename=artifact.path.name)
+        response.headers["X-WeaveXDR-SHA256"] = artifact.sha256
+        return response
+
     @app.patch("/incidents/{incident_id}/management", dependencies=protected)
     def update_incident_management(incident_id: str, body: IncidentManagementBody):
         changes = body.model_dump(exclude_unset=True)
@@ -598,9 +629,42 @@ def create_app(
                 "same_origin_mutations": True,
                 "instance_handshake": "hmac_sha256_nonce_dpapi",
                 "data_acl": "current_user_and_system",
+                "audit_integrity": runtime.audit_log.verify_integrity() if runtime.audit_log else None,
+                "self_protection": runtime.self_protection.verify().state if runtime.self_protection else "unavailable",
             },
             "application": {"version": APP_VERSION, "build_date": BUILD_DATE, "pid": os.getpid(), "port": runtime.instance_port},
         }
+
+    @app.get("/audit/status", dependencies=protected)
+    def audit_status():
+        if runtime.audit_log is None:
+            raise HTTPException(status_code=503, detail="audit log is unavailable")
+        records = runtime.audit_log.list_records()
+        return {"integrity_ok": runtime.audit_log.verify_integrity(), "records": len(records), "latest": records[-1] if records else None}
+
+    @app.get("/security/integrity", dependencies=protected)
+    def self_integrity():
+        if runtime.self_protection is None:
+            raise HTTPException(status_code=503, detail="self protection is unavailable")
+        return runtime.self_protection.as_payload(runtime.self_protection.verify())
+
+    @app.get("/updates/status", dependencies=protected)
+    def update_status():
+        if runtime.update_service is None:
+            raise HTTPException(status_code=503, detail="update service is unavailable")
+        return runtime.update_service.status()
+
+    @app.post("/updates/check", dependencies=protected)
+    def check_updates():
+        if runtime.update_service is None:
+            raise HTTPException(status_code=503, detail="update service is unavailable")
+        return runtime.update_service.check_latest()
+
+    @app.post("/updates/download", dependencies=protected)
+    def download_update():
+        if runtime.update_service is None:
+            raise HTTPException(status_code=503, detail="update service is unavailable")
+        return runtime.update_service.download_latest()
 
     @app.get("/runtime/health", response_model=RuntimeHealth, dependencies=protected)
     def runtime_health():
@@ -616,7 +680,10 @@ def create_app(
             raise HTTPException(status_code=422, detail="unknown scan profile")
         if body.profile == "custom" and not body.paths:
             raise HTTPException(status_code=422, detail="custom scan requires paths")
-        return runtime.scan_manager.start(body.paths, profile=body.profile)
+        try:
+            return runtime.scan_manager.start(body.paths, profile=body.profile)
+        except RuntimeError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
 
     @app.post("/dialogs/scan-paths", dependencies=protected)
     def choose_scan_paths(body: ScanPathDialogBody):

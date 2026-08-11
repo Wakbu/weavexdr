@@ -5,6 +5,7 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+output/
 WeaveXDR.exe
 # 로컬 작업 지침과 진행 기록은 PC에만 유지한다.
 AGENTS.md

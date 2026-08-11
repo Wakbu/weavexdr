@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import hashlib
 import json
 import re
 import zipfile
@@ -56,4 +57,22 @@ def validate_windows_package(package_path: str | Path) -> list[str]:
                     package.read(script_name).decode("utf-8-sig")
     except (OSError, zipfile.BadZipFile, UnicodeDecodeError, json.JSONDecodeError) as error:
         errors.append(f"invalid Windows package: {error}")
+    return errors
+
+
+def validate_update_manifest(manifest_path: str | Path) -> list[str]:
+    errors: list[str] = []
+    path = Path(manifest_path)
+    try:
+        manifest = json.loads(path.read_text(encoding="utf-8-sig"))
+        version = str(manifest.get("version", ""))
+        package = path.parent / str(manifest.get("package_name", ""))
+        if not re.fullmatch(r"\d{8}\.\d+", version):
+            errors.append("update manifest version must use YYYYMMDD.PATCH")
+        if package.name != f"weavexdr-{version}-windows.zip" or not package.is_file():
+            errors.append("update manifest package is missing or has an unexpected name")
+        elif hashlib.sha256(package.read_bytes()).hexdigest() != str(manifest.get("package_sha256", "")).casefold():
+            errors.append("update manifest package SHA-256 does not match")
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        errors.append(f"invalid update manifest: {error}")
     return errors

@@ -82,8 +82,29 @@ def test_dashboard_and_settings_are_available_without_rendering_event_html():
         assert 'id="overview-geo"' in dashboard.text
         assert 'id="threat-globe"' in dashboard.text
         assert "createThreatGlobe" in dashboard.text
-        assert "recentAttackHotspots" in dashboard.text
+        assert "recentSuspiciousSignals" in dashboard.text
         assert "textureLoaded:Boolean(texture)" in dashboard.text
+        assert 'id="globe-window"' in dashboard.text
+        assert 'id="globe-detail"' in dashboard.text
+        assert "loadGlobeIncidents" in dashboard.text
+        assert "date_from:dateFrom" in dashboard.text
+        assert "showGlobeSignalList" in dashboard.text
+        assert "globeIncidentFilter" in dashboard.text
+        assert "Math.log2(item.count+1)" in dashboard.text
+        assert "event.target.closest('#globe-detail')" in dashboard.text
+        assert "#globe-detail').addEventListener('wheel'" in dashboard.text
+        assert "list.onkeydown" in dashboard.text
+        assert "globe-detail-list::-webkit-scrollbar-button" in dashboard.text
+        assert "grid-auto-rows:max-content" in dashboard.text
+        assert "min-height:52px" in dashboard.text
+        assert "togglePanelFullscreen" in dashboard.text
+        assert "document.fullscreenElement" in dashboard.text
+        assert dashboard.text.count("data-fullscreen") >= 6
+        assert "textureCanvas.width=2160" in dashboard.text
+        assert "latitude=37.57*Math.PI/180" in dashboard.text
+        assert "requestAnimationFrame(animate)" not in dashboard.text
+        assert "links:links.length" in dashboard.text
+        assert "height:clamp(480px,34vw,560px)" in dashboard.text
         assert 'data-tab="graph"' in dashboard.text
         assert "createElementNS" in dashboard.text
         assert "'/collector/configure'" in dashboard.text
@@ -169,6 +190,8 @@ def test_geo_map_uses_connected_eurasia_and_never_guesses_unknown_country():
     assert "Natural Earth 1:110m" in world_map
     assert "country-kor" in world_map
     assert "country-jpn" in world_map
+    assert ".country-kor{" in world_map
+    assert ".country-kor,.country-jpn" not in world_map
     assert world_map.count("<path") > 150
     assert "로컬 GeoIP 데이터 필요" in dashboard
     assert "대한민국 · 서울" in dashboard
