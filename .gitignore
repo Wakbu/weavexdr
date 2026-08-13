@@ -2,10 +2,12 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.test-tmp/
 *.egg-info/
 dist/
 build/
 output/
+artifacts/
 WeaveXDR.exe
 # 로컬 작업 지침과 진행 기록은 PC에만 유지한다.
 AGENTS.md

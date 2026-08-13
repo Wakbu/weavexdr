@@ -132,7 +132,8 @@ try {
     # 쿠키 인증 변경 요청은 실제 브라우저와 동일하게 정확한 loopback Origin을 제시해야 한다.
     $shutdown = Invoke-WebRequest -UseBasicParsing -Method Post -Uri "$baseUrl/shutdown" -Headers @{ Origin = $baseUrl } -WebSession $browserSession -TimeoutSec 3
     if ($shutdown.StatusCode -ne 200) { throw "Executable shutdown request failed." }
-    if (-not $serverProcess.WaitForExit(10000)) { throw "Executable did not stop after shutdown request." }
+    # 정상 종료 감시 스레드의 최대 20초 정리 시간보다 짧게 잘라 거짓 실패를 만들지 않는다.
+    if (-not $serverProcess.WaitForExit(25000)) { throw "Executable did not stop after shutdown request." }
 }
 finally {
     # 이 스크립트가 시작했고 경로까지 확인한 서버만 실패 정리 대상으로 제한한다.

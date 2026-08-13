@@ -17,6 +17,7 @@ def test_dashboard_static_contract_covers_viewport_and_scale_matrix():
     assert len(result["viewport_matrix"]) == 12
     assert {entry["width"] for entry in result["viewport_matrix"]} == {640, 900, 1280, 1920}
     assert {entry["scale"] for entry in result["viewport_matrix"]} == {100, 125, 150}
+    assert result["ui_preferences"]["density_modes"] == ["simple", "comfortable", "compact", "detailed"]
 
 
 def test_sidebar_home_and_function_pages_are_explicitly_separated():
@@ -48,3 +49,11 @@ def test_investigation_model_content_and_assistant_ux_contracts():
     assert "if(error instanceof TypeError||/failed to fetch/i.test(error.message))accepted=true" in html
     assert html.index('id="system-notices"') > html.index('id="page-overview"')
     assert "paused:'수집 일시정지'" in html and ".connection.paused" in html
+    assert 'id="density-select"' in html and 'id="incident-column-options"' in html
+    assert 'id="table-layout-select"' in html and "data-layout" in html
+    assert ".column-options label" in html and "white-space:nowrap" in html
+    assert ".column-visibility-field{grid-column:1/-1}" in html
+    assert "grid-template-columns:repeat(3,minmax(0,1fr))" in html
+    assert ".shell.sidebar-collapsed .content { max-width:none" in html
+    assert "weavexdr-ui-preferences" in html and "applyUiPreferences" in html
+    assert 'id="help-drawer"' in html and "renderHelp" in html

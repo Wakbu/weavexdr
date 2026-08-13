@@ -50,6 +50,28 @@ python scripts/run_soak_test.py --duration-seconds 60
 python scripts/run_soak_test.py --duration-seconds 86400
 ```
 
+Windows 운영 증적은 동일한 JSON 스키마로 기준 실행, 절전 복귀, 사용자 전환,
+네트워크 변경과 설치·업데이트·제거 시나리오를 기록한다. 스크립트가 절전이나 사용자
+전환을 임의로 실행하지는 않으므로 해당 동작 직전에 하네스를 시작하고 수동 동작 후
+완료된 증적을 보관한다.
+
+```powershell
+.\scripts\run_windows_validation.ps1 -Scenario baseline -DurationSeconds 60 -ProcessId <WeaveXDR PID>
+.\scripts\run_windows_validation.ps1 -Scenario sleep-resume -DurationSeconds 3600 -ProcessId <WeaveXDR PID>
+.\scripts\run_windows_validation.ps1 -Scenario user-switch -DurationSeconds 3600 -ProcessId <WeaveXDR PID>
+.\scripts\run_windows_validation.ps1 -Scenario network-change -DurationSeconds 600 -ProcessId <WeaveXDR PID>
+```
+
+각 증적에는 Windows 버전, 사용자 세션, 전원 상태, 프로세스 생존 여부, 메모리 증가율과
+절전 가능성이 있는 시계 불연속이 포함된다. 실제 완료 판정은 Windows 10·11 각각에서
+24시간과 7일 결과를 모두 확보한 뒤에만 한다.
+
+`python scripts/validate_windows_matrix.py artifacts/windows-validation`은 두 운영체제의
+24시간·7일·절전 복귀·사용자 전환 증적이 모두 통과했는지 일괄 판정한다.
+`scripts/validate_windows_trust.ps1`은 EXE의 Authenticode 서명과 타임스탬프를 검사한다.
+SmartScreen 평판은 공개 인증서로 서명한 배포본을 실제 Windows 환경에 배포한 뒤 별도로
+확인해야 하며 로컬 자체 서명 인증서로 완료 처리하지 않는다.
+
 ## 로컬 모델 회귀 평가
 
 동일한 평가 데이터로 모델별 정확도·오탐·미탐·P95 지연을 저장하고 다음 후보를 기준 결과와 비교한다.

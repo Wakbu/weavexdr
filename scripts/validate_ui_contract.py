@@ -66,6 +66,13 @@ def validate_dashboard(path: Path) -> dict[str, object]:
         "natural_earth_map": "/assets/world-map.svg" in html,
         "accessible_names": not unlabeled_controls,
         "text_contrast": contrast["text_on_bg"] >= 4.5 and contrast["muted_on_bg"] >= 4.5,
+        "density_modes": all(value in html for value in ('value="simple"', 'value="comfortable"', 'value="detailed"')),
+        "table_preferences": all(value in html for value in ("weavexdr-ui-preferences", "data-hidden-columns", "table-layout-select", "data-layout")),
+        "context_help": 'id="help-drawer"' in html and "helpContent" in html,
+        "long_text_wrapping": "overflow-wrap:anywhere" in html and "word-break:break-word" in html,
+        "single_line_column_options": ".column-options label" in html and "white-space:nowrap" in html,
+        "full_width_column_options": ".column-visibility-field{grid-column:1/-1}" in html and "grid-template-columns:repeat(3,minmax(0,1fr))" in html,
+        "collapsed_content_expansion": ".shell.sidebar-collapsed .content { max-width:none" in html,
     }
     errors = [name for name, passed in required.items() if not passed]
     if duplicates:
@@ -77,6 +84,7 @@ def validate_dashboard(path: Path) -> dict[str, object]:
         "duplicate_ids": duplicates,
         "unlabeled_controls": unlabeled_controls,
         "contrast": contrast,
+        "ui_preferences": {"density_modes": ["simple", "comfortable", "compact", "detailed"], "optional_incident_columns": ["verdict", "evidence", "time"]},
         "viewport_matrix": [
             {"width": width, "scale": scale}
             for width in (640, 900, 1280, 1920)
