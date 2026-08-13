@@ -166,9 +166,20 @@ def test_dashboard_exposes_management_and_advanced_graph_controls():
     dashboard = load_dashboard_html()
     for marker in (
         'id="status-filter"', 'id="entity-filter"', 'data-tab="manage"',
-        "hierarchical", "radial", "timeline", "graph-minimap",
+        "hierarchical", "radial", "timeline", "force", "graph-minimap",
         "export('svg')", "export('png')", "export('json')",
         "showEntityContextMenu", "ArrowLeft", "delete-demos",
+    ):
+        assert marker in dashboard
+
+
+def test_density_modes_and_graph_intelligence_are_semantically_distinct():
+    dashboard = load_dashboard_html()
+    for marker in (
+        ".field-group .column-options input{width:16px", "density-mode-summary",
+        'body[data-density="simple"] .incident-table .col-evidence',
+        "density-detailed", "graph-insights", "관계 인텔리전스",
+        "최단 공격 경로 강조", "showHops", "path-highlight", "inferred",
     ):
         assert marker in dashboard
 

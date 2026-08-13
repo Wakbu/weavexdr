@@ -56,6 +56,7 @@ from xdr_graph.reporting import IncidentReportExporter, SecuritySummaryExporter
 from xdr_graph.self_protection import SelfProtectionMonitor
 from xdr_graph.update_manager import GitHubUpdateService
 from xdr_graph.local_model import OllamaModelManager
+from xdr_graph.graph_insights import analyze_graph
 
 
 _command_adapter = TypeAdapter(ResponseCommand)
@@ -477,6 +478,15 @@ def create_app(
             raise HTTPException(status_code=404, detail="incident was not found")
         return report
 
+    @app.get("/incidents/{incident_id}/graph-insights", dependencies=protected)
+    def incident_graph_insights(incident_id: str):
+        report = runtime.event_store.load_incident_report(incident_id)
+        if report is None:
+            raise HTTPException(status_code=404, detail="incident was not found")
+        # 로컬 정상 기준선은 저장된 사건만 사용하며 외부 전송 없이 관계 희소도를 계산한다.
+        baseline = runtime.event_store.list_incident_reports(limit=500)
+        return analyze_graph(report, baseline)
+
     @app.post("/incidents/{incident_id}/export", dependencies=protected)
     def export_incident(incident_id: str, body: ReportExportBody):
         if runtime.report_exporter is None:
@@ -710,14 +720,27 @@ def create_app(
             raise HTTPException(status_code=503, detail="local model management is unavailable")
         incidents = runtime.event_store.list_incident_views(limit=12, sort="updated_desc")
         if body.incident_id:
-            incidents = [item for item in incidents if item.get("incident_id") == body.incident_id] or incidents
+            selected_view = runtime.event_store.load_incident_view(body.incident_id)
+            incidents = [selected_view] if selected_view else incidents
         # 대화에는 최근 사건의 최소 요약만 전달하며 원본 파일 내용이나 인증 정보는 포함하지 않는다.
-        context = json.dumps([
+        context_items = [
             {"incident_id": item.get("incident_id"), "verdict": item.get("verdict"), "risk_score": item.get("risk_score"),
              "findings": [finding.get("reason", "") for finding in item.get("findings", [])[:5]],
              "event_types": [event.get("event_type", "unknown") for event in item.get("source_events", [])[:20]]}
             for item in incidents
-        ], ensure_ascii=False)
+        ]
+        if body.incident_id:
+            selected = runtime.event_store.load_incident_report(body.incident_id)
+            if selected and context_items:
+                insights = analyze_graph(selected, runtime.event_store.list_incident_reports(limit=500))
+                context_items[0]["graph"] = {
+                    "relations": insights["relation_counts"],
+                    "shortest_path": insights["shortest_path_labels"],
+                    "connections": insights["connection_explanations"][:12],
+                    "hypotheses": insights["hypotheses"],
+                    "missing_evidence": insights["missing_evidence"],
+                }
+        context = json.dumps(context_items, ensure_ascii=False)
         try:
             return runtime.model_manager.chat(body.question, context)
         except ValueError as error:

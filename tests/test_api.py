@@ -82,6 +82,20 @@ def test_local_assistant_receives_minimal_dictionary_incident_context():
         store.close()
 
 
+def test_incident_graph_insights_api_returns_explainable_analysis():
+    client, store = build_client()
+    try:
+        response = client.get("/incidents/incident-001/graph-insights", headers=AUTH)
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["edges"]
+        assert payload["hypotheses"][0]["evidence_event_ids"]
+        assert len(payload["hourly_activity"]) == 24
+        assert client.get("/incidents/missing/graph-insights", headers=AUTH).status_code == 404
+    finally:
+        store.close()
+
+
 def test_storage_health_and_confirmed_backup_api(tmp_path):
     database = tmp_path / "weavexdr.db"
     store = SQLiteEventStore(database)
