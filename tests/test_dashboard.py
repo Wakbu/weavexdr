@@ -184,6 +184,34 @@ def test_density_modes_and_graph_intelligence_are_semantically_distinct():
         assert marker in dashboard
 
 
+def test_opqs_features_are_visible_as_dedicated_investigation_tabs():
+    dashboard = load_dashboard_html()
+    for marker in (
+        'data-tab="relations"', 'data-tab="visuals"', 'data-tab="detections"',
+        'data-tab="ai-investigation"', "renderRelationsLab", "renderVisualsLab",
+        "renderDetectionsLab", "renderAiInvestigationLab", "관계 분석 작업실",
+        "시각 분석 보드", "탐지 상관분석 실험실", "AI 조사 데스크",
+        "/graph-query", "요일×시간 기준선", "섀도 모드 규칙",
+    ):
+        assert marker in dashboard
+
+
+def test_response_workspace_operations_and_fast_start_are_dedicated_surfaces():
+    dashboard = load_dashboard_html()
+    for marker in (
+        'data-nav="response-center"', 'data-nav="workspace"', 'data-nav="operations-lab"',
+        'id="page-response-center"', 'id="page-workspace"', 'id="page-operations-lab"',
+        "renderResponseCenter", "renderWorkspace", "renderOperationsLab", "toggleCommandPalette",
+        "Ctrl+K", "/operations/insights", "/storage/optimize", "/storage/rehearse",
+        "deferGlobe:true", "핵심 보호 상태를 확인하고 있습니다.", "weavexdr-high-contrast",
+        "pageSize=20", "search-pagination", "unified-result", "profile-option",
+        "판정과 위험도만 크게 표시", "response-impact", "04 · 보호 상태",
+        'data-nav="hunting"', 'id="page-hunting"', "/hunting/overview",
+        "renderHuntingCenter", "runGuidedHunt", "엔터티 위험 분석", "연관 공격 스토리",
+    ):
+        assert marker in dashboard
+
+
 def test_graph_minimap_does_not_cover_interactive_canvas():
     dashboard = load_dashboard_html()
     assert ".attack-graph>.graph-minimap" in dashboard

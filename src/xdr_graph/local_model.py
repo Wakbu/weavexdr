@@ -76,6 +76,18 @@ class OllamaModelManager:
         self._cached_status = (time.monotonic(), status)
         return dict(status)
 
+    def cached_status(self) -> dict[str, Any]:
+        """첫 화면에서는 Ollama 네트워크 대기 없이 마지막 상태만 반환한다."""
+        if self._cached_status:
+            return dict(self._cached_status[1])
+        return {
+            "provider": "ollama", "available": False, "selected_model": self.selected_model,
+            "installed_models": [], "selected_installed": False, "fallback": "rules",
+            "resource_profile": asdict(self.profile), "model_requirements": MODEL_REQUIREMENTS,
+            "selected_requirements": MODEL_REQUIREMENTS.get(self.selected_model),
+            "purpose": "로컬 모델 상태를 백그라운드에서 확인하고 있습니다.", "error": None,
+        }
+
     def select(self, model: str) -> dict[str, Any]:
         selected = self._validate(model)
         with self._lock:
@@ -116,13 +128,17 @@ class OllamaModelManager:
                 {"role": "system", "content": system},
                 {"role": "user", "content": f"로컬 XDR 상태:\n{context[:24_000]}\n\n질문:\n{question}"},
             ],
+            # 모델을 짧은 질의마다 다시 메모리에 적재하지 않아 연속 질문의 실패와 지연을 줄인다.
+            "keep_alive": "10m",
             "options": {"temperature": 0.2, "num_ctx": min(self.profile.context_tokens, 8192)},
         }, ensure_ascii=False).encode("utf-8")
         budget_ms = int(MODEL_REQUIREMENTS.get(self.selected_model, {}).get("latency_budget_ms", 20_000))
         request = Request(f"{self.endpoint}/api/chat", data=payload, headers={"Content-Type": "application/json"}, method="POST")
         started_at = time.perf_counter()
         try:
-            with urlopen(request, timeout=max(5, budget_ms / 1000)) as response:
+            # 최초 적재는 추론 예산보다 오래 걸릴 수 있으므로 전송 계층 제한은 여유 있게 둔다.
+            # 위험 점수 계산은 이 응답과 독립적이어서 모델 지연 중에도 규칙 탐지는 계속 동작한다.
+            with urlopen(request, timeout=max(45, budget_ms * 2 / 1000)) as response:
                 body = json.loads(response.read(1_000_000))
             answer = str(body.get("message", {}).get("content", "")).strip()
             if not answer:
@@ -137,10 +153,10 @@ class OllamaModelManager:
                 incidents = []
             high_risk = sum(1 for item in incidents if item.get("verdict") == "suspicious")
             answer = (
-                "로컬 AI 모델 응답이 일시적으로 중단되어 규칙 기반 안내로 전환했습니다. "
+                "이번 답변은 로컬 탐지 규칙을 기준으로 정리했습니다. "
                 f"현재 문맥에는 최근 사건 {len(incidents)}건, 고위험 사건 {high_risk}건이 있습니다. "
                 "사건 화면에서 위험 점수가 높은 항목의 탐지 근거와 연결된 프로세스·파일·네트워크 순서로 확인하세요. "
-                "모델 상태는 AI 모델 화면에서 다시 확인할 수 있습니다."
+                "로컬 모델 연결 상태는 AI 모델 화면에서 확인할 수 있습니다."
             )
             return {
                 "answer": answer,

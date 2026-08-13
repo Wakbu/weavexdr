@@ -1,4 +1,4 @@
-from xdr_graph.graph_insights import analyze_graph
+from xdr_graph.graph_insights import analyze_graph, query_graph
 from xdr_graph.models import IncidentReport
 
 
@@ -23,3 +23,12 @@ def test_graph_insights_explain_relationships_paths_and_hypotheses():
     assert result["hypotheses"][0]["evidence_event_ids"]
     assert result["connection_explanations"][0]["evidence_event_ids"]
     assert len(result["hourly_activity"]) == 24
+    assert len(result["weekly_activity"]) == 168
+    assert result["playback"][-1]["visible_edges"]
+    assert len(result["adjacency_matrix"]) == len(result["adjacency_node_ids"])
+    assert result["risk_timeline"][-1]["risk"] >= 0
+    assert result["clusters"]
+    assert result["detection_chains"]
+    query = query_graph(result, "powershell 연결")
+    assert query["matches"]
+    assert query["matches"][0]["evidence_event_ids"]

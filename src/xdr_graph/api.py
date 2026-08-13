@@ -56,7 +56,8 @@ from xdr_graph.reporting import IncidentReportExporter, SecuritySummaryExporter
 from xdr_graph.self_protection import SelfProtectionMonitor
 from xdr_graph.update_manager import GitHubUpdateService
 from xdr_graph.local_model import OllamaModelManager
-from xdr_graph.graph_insights import analyze_graph
+from xdr_graph.graph_insights import analyze_graph, query_graph
+from xdr_graph.commercial_analytics import analyze_security_portfolio
 
 
 _command_adapter = TypeAdapter(ResponseCommand)
@@ -125,6 +126,10 @@ class ModelSelectionBody(BaseModel):
 class AssistantQuestionBody(BaseModel):
     question: str = Field(min_length=1, max_length=1000)
     incident_id: str | None = Field(default=None, max_length=160)
+
+
+class GraphQueryBody(BaseModel):
+    question: str = Field(min_length=1, max_length=500)
 
 
 class PlaybookRequestBody(BaseModel):
@@ -487,6 +492,14 @@ def create_app(
         baseline = runtime.event_store.list_incident_reports(limit=500)
         return analyze_graph(report, baseline)
 
+    @app.post("/incidents/{incident_id}/graph-query", dependencies=protected)
+    def incident_graph_query(incident_id: str, body: GraphQueryBody):
+        report = runtime.event_store.load_incident_report(incident_id)
+        if report is None:
+            raise HTTPException(status_code=404, detail="incident was not found")
+        insights = analyze_graph(report, runtime.event_store.list_incident_reports(limit=500))
+        return query_graph(insights, body.question)
+
     @app.post("/incidents/{incident_id}/export", dependencies=protected)
     def export_incident(incident_id: str, body: ReportExportBody):
         if runtime.report_exporter is None:
@@ -649,7 +662,7 @@ def create_app(
         return {
             "api": {"state": "connected", "label": "로컬 API 정상"},
             "collector": collector_status,
-            "model": runtime.model_manager.status() if runtime.model_manager else runtime.model_status,
+            "model": runtime.model_manager.cached_status() if runtime.model_manager else runtime.model_status,
             "active_response": runtime.actual_response_service is not None,
             "response_capabilities": {
                 "process_tree": runtime.actual_response_service is not None,
@@ -718,6 +731,14 @@ def create_app(
     def local_assistant_chat(body: AssistantQuestionBody):
         if runtime.model_manager is None:
             raise HTTPException(status_code=503, detail="local model management is unavailable")
+        if any(keyword in body.question.casefold() for keyword in ("삭제해", "격리해", "차단해", "종료해", "kill ", "delete ", "block ")):
+            # 대화창은 읽기 전용이다. 위험 작업 문장은 실행 요청으로 전달하지 않고
+            # 사용자가 조사 탭에서 근거와 영향을 확인하는 안전한 제안으로 바꾼다.
+            return {
+                "answer": "이 요청은 여기서 직접 실행하지 않습니다. 먼저 조사 탭에서 대상 관계, 근거 이벤트와 영향 범위를 확인한 뒤 대응 탭의 승인 절차를 사용하세요.",
+                "provider": "safety-policy", "model": None, "latency_ms": 0, "degraded": False,
+                "read_only_conversion": True,
+            }
         incidents = runtime.event_store.list_incident_views(limit=12, sort="updated_desc")
         if body.incident_id:
             selected_view = runtime.event_store.load_incident_view(body.incident_id)
@@ -782,6 +803,68 @@ def create_app(
         if runtime.runtime_monitor is None:
             raise HTTPException(status_code=503, detail="runtime monitoring is unavailable")
         return runtime.runtime_monitor.sample()
+
+    @app.get("/operations/insights", dependencies=protected)
+    def operations_insights():
+        if runtime.storage_manager is None:
+            raise HTTPException(status_code=503, detail="storage maintenance is unavailable")
+        health = runtime.storage_manager.health()
+        backups = runtime.storage_manager.list_backups()
+        reports = runtime.event_store.list_incident_reports(limit=500)
+        defender_events = sum(
+            event.event_type == "defender_detection" or "defender" in event.source.casefold()
+            for report in reports for event in report.source_events
+        )
+        with runtime.lock:
+            collector = dict(runtime.collector_status)
+        database_age_days = max(1.0, (datetime.now(UTC).timestamp() - runtime.storage_manager.database_path.stat().st_ctime) / 86400) if runtime.storage_manager.database_path.exists() else 1.0
+        daily_growth = max(1, int(health.database_bytes / database_age_days))
+        recovery_score = 40 if health.integrity_ok else 0
+        if backups and backups[0].integrity_ok:
+            recovery_score += 45
+        if runtime.storage_manager.recovery_status().rollback_available:
+            recovery_score += 15
+        return {
+            "collector": collector,
+            "storage": {**health.model_dump(), "daily_growth_bytes": daily_growth, "projected_30_days_bytes": health.database_bytes + daily_growth * 30},
+            "recovery": {"score": min(100, recovery_score), "verified_backups": sum(item.integrity_ok for item in backups), "latest_backup": backups[0].model_dump(mode="json") if backups else None},
+            "sensors": [
+                {"name": "Sysmon", "state": collector.get("state", "not_configured"), "delay_seconds": collector.get("delay_seconds")},
+                {"name": "Windows Defender", "state": "integrated" if defender_events else "ready", "events": defender_events},
+                {"name": "파일 감시", "state": "ready" if runtime.scan_manager else "unavailable"},
+            ],
+            "integrations": [
+                {"name": "STIX/TAXII·MISP", "state": "disabled", "privacy": "로컬 파일 가져오기만 허용"},
+                {"name": "외부 평판 조회", "state": "consent_required", "privacy": "해시·IP 전송 전 항목별 확인"},
+                {"name": "다중 PC 보기", "state": "disabled", "privacy": "읽기 전용 명시 연결 필요"},
+            ],
+        }
+
+    @app.get("/hunting/overview", dependencies=protected)
+    def hunting_overview(window_hours: int = 168):
+        """Return bounded local entity risk and correlated attack stories."""
+        try:
+            reports = runtime.event_store.list_incident_reports(limit=500)
+            return analyze_security_portfolio(reports, window_hours=window_hours)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+
+    @app.post("/storage/optimize", dependencies=protected)
+    def optimize_storage(body: BackupBody):
+        if runtime.storage_manager is None:
+            raise HTTPException(status_code=503, detail="storage maintenance is unavailable")
+        try:
+            return runtime.storage_manager.optimize(confirmed=body.confirmed)
+        except PermissionError as error:
+            raise HTTPException(status_code=403, detail=str(error)) from error
+
+    @app.post("/storage/rehearse", dependencies=protected)
+    def rehearse_storage_restore(body: BackupBody):
+        if not body.confirmed:
+            raise HTTPException(status_code=403, detail="restore rehearsal requires confirmation")
+        if runtime.storage_manager is None:
+            raise HTTPException(status_code=503, detail="storage maintenance is unavailable")
+        return runtime.storage_manager.rehearse_latest_backup()
 
     @app.post("/scans", dependencies=protected)
     def start_scan(body: ScanRequestBody):

@@ -33,6 +33,7 @@ def test_local_assistant_uses_selected_loopback_model_without_tools(tmp_path, mo
         payload = json.loads(request.data)
         assert request.full_url == "http://127.0.0.1:11434/api/chat"
         assert payload["model"] == "qwen3:4b"
+        assert payload["keep_alive"] == "10m"
         assert "tools" not in payload
         assert "명령 실행" in payload["messages"][0]["content"]
         return Response({"message": {"content": "가장 높은 위험 사건부터 확인하세요."}})
@@ -68,3 +69,4 @@ def test_local_assistant_degrades_to_rules_when_installed_model_request_breaks(t
     assert answer["provider"] == "rules"
     assert answer["degraded"] is True
     assert "고위험 사건 1건" in answer["answer"]
+    assert "일시적으로 중단" not in answer["answer"]

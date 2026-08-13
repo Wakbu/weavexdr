@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections import Counter, deque
+from collections import Counter, defaultdict, deque
 from pathlib import PureWindowsPath
 
 from xdr_graph.models import IncidentReport
@@ -97,6 +97,15 @@ def analyze_graph(report: IncidentReport, baseline: list[IncidentReport] | None 
         target = nodes[edge["target"]]["label"].casefold()
         edge["rare"] = baseline_counts[f"process_start:{source}:{target}"] <= 1 if edge["relation"] == "spawns" else False
 
+    event_by_id = {event.event_id: event for event in report.source_events}
+    relation_risk = {"runs": 4, "spawns": 14, "creates": 18, "connects": 16, "persists": 24, "queries": 9, "downloads": 22}
+    for edge in edges.values():
+        observed = [event_by_id[event_id].timestamp for event_id in edge["evidence_event_ids"] if event_id in event_by_id]
+        edge["first_seen"] = min(observed).isoformat() if observed else None
+        edge["last_seen"] = max(observed).isoformat() if observed else None
+        edge["risk_contribution"] = min(40, relation_risk[edge["relation"]] + max(0, len(edge["evidence_event_ids"]) - 1) * 2)
+        edge["first_observed"] = edge["rare"]
+
     # 외부 노드에서 파일·지속성 노드까지의 가장 짧은 관찰 경로를 우선 제시한다.
     adjacency: dict[str, list[str]] = {}
     for edge in edges.values():
@@ -116,6 +125,23 @@ def analyze_graph(report: IncidentReport, baseline: list[IncidentReport] | None 
             if target not in visited:
                 visited.add(target)
                 pending.append((target, [*path, target]))
+
+    # 분기 비교를 위해 단순 경로를 제한적으로 열거한다. 사건 하나에서 무한 순환이나
+    # 조합 폭발이 생기지 않도록 최대 6홉·8개 경로까지만 반환한다.
+    attack_paths: list[list[str]] = []
+    pending_paths = deque((start, [start]) for start in starts)
+    while pending_paths and len(attack_paths) < 8:
+        current, path = pending_paths.popleft()
+        if current in targets and len(path) > 1:
+            attack_paths.append(path)
+            continue
+        if len(path) >= 7:
+            continue
+        for candidate in adjacency.get(current, []):
+            if candidate not in path:
+                pending_paths.append((candidate, [*path, candidate]))
+    path_counts = Counter(node_id for path in attack_paths for node_id in path)
+    common_path_nodes = [node_id for node_id, count in path_counts.items() if count > 1]
 
     relation_counts = Counter(edge["relation"] for edge in edges.values())
     event_counts = Counter(event.timestamp.astimezone().strftime("%H") for event in report.source_events)
@@ -147,6 +173,126 @@ def analyze_graph(report: IncidentReport, baseline: list[IncidentReport] | None 
         for edge in edges.values()
     ]
 
+    baseline_reports = baseline or [report]
+    process_counts: Counter[str] = Counter()
+    user_counts: Counter[str] = Counter()
+    host_counts: Counter[str] = Counter()
+    weekly_counts: Counter[tuple[int, int]] = Counter()
+    ioc_incidents: defaultdict[str, set[str]] = defaultdict(set)
+    for candidate in baseline_reports:
+        for event in candidate.source_events:
+            if process_name := getattr(event, "process_name", None):
+                process_counts[process_name.casefold()] += 1
+            if user := getattr(event, "user", None):
+                user_counts[user.casefold()] += 1
+            host_counts[event.host_id.casefold()] += 1
+            local_time = event.timestamp.astimezone()
+            weekly_counts[(local_time.weekday(), local_time.hour)] += 1
+            for ioc in (getattr(event, "destination_ip", None), getattr(event, "source_ip", None), getattr(event, "file_path", None)):
+                if ioc:
+                    ioc_incidents[str(ioc).casefold()].add(candidate.incident_id)
+
+    baseline_rows = []
+    for event in report.source_events:
+        for kind, value, counts in (
+            ("프로세스", getattr(event, "process_name", None), process_counts),
+            ("사용자", getattr(event, "user", None), user_counts),
+            ("호스트", event.host_id, host_counts),
+        ):
+            if value and not any(row["type"] == kind and row["value"] == value for row in baseline_rows):
+                count = counts[str(value).casefold()]
+                baseline_rows.append({"type": kind, "value": value, "observations": count, "rare": count <= 1})
+
+    # 프로세스를 중심으로 인접 노드를 묶어 큰 그래프에서도 조사 단위를 바로 찾는다.
+    clusters = []
+    for process_id in [key for key, value in nodes.items() if value["type"] == "process"]:
+        members = {process_id}
+        for edge in edges.values():
+            if edge["source"] == process_id:
+                members.add(edge["target"])
+            if edge["target"] == process_id:
+                members.add(edge["source"])
+        cluster_edges = [edge for edge in edges.values() if edge["source"] in members and edge["target"] in members]
+        clusters.append({
+            "id": f"cluster-{len(clusters)+1}", "label": nodes[process_id]["label"],
+            "node_ids": sorted(members), "risk": min(100, sum(edge["risk_contribution"] for edge in cluster_edges)),
+            "summary": f"{len(members)}개 노드 · {len(cluster_edges)}개 관계",
+        })
+
+    ordered_events = sorted(report.source_events, key=lambda event: event.timestamp)
+    playback = []
+    visible_events: set[str] = set()
+    for index, event in enumerate(ordered_events, 1):
+        visible_events.add(event.event_id)
+        playback.append({
+            "index": index, "event_id": event.event_id, "timestamp": event.timestamp.isoformat(),
+            "event_type": event.event_type,
+            "visible_edges": [position for position, edge in enumerate(edges.values()) if visible_events.intersection(edge["evidence_event_ids"])],
+        })
+
+    node_ids = list(nodes)[:30]
+    adjacency_matrix = [[0 for _ in node_ids] for _ in node_ids]
+    node_index = {node_id: index for index, node_id in enumerate(node_ids)}
+    for edge in edges.values():
+        if edge["source"] in node_index and edge["target"] in node_index:
+            left, right = node_index[edge["source"]], node_index[edge["target"]]
+            adjacency_matrix[left][right] += 1
+            adjacency_matrix[right][left] += 1
+
+    event_risk: defaultdict[str, int] = defaultdict(int)
+    for finding in report.findings:
+        for event_id in finding.event_ids:
+            event_risk[event_id] += finding.severity
+    cumulative = 0
+    risk_timeline = []
+    for event in ordered_events:
+        cumulative = min(100, cumulative + event_risk[event.event_id])
+        risk_timeline.append({"event_id": event.event_id, "timestamp": event.timestamp.isoformat(), "risk": cumulative, "reason_count": sum(event.event_id in finding.event_ids for finding in report.findings)})
+
+    stage_for_type = {
+        "authentication": "초기 접근", "process_start": "실행", "powershell_script": "실행",
+        "file_create": "파일 변경", "registry_persistence": "지속성", "service_install": "지속성",
+        "scheduled_task": "지속성", "wmi_subscription": "지속성", "network_connect": "외부 통신",
+        "dns_query": "외부 통신", "defender_detection": "영향",
+    }
+    stage_counts = Counter(stage_for_type.get(event.event_type, "기타") for event in ordered_events)
+
+    detection_chains = []
+    event_types = {event.event_type for event in ordered_events}
+    process_text = " ".join(str(getattr(event, "process_name", "") or "") + " " + str(getattr(event, "command_line", "") or "") for event in ordered_events).casefold()
+    if any(value in process_text for value in ("powershell", "rundll32", "regsvr32", "mshta", "certutil", "wmic")):
+        detection_chains.append({"kind": "LOLBin 문맥", "score": 68, "detail": "관리 도구 실행과 후속 파일·통신을 함께 확인", "event_ids": [event.event_id for event in ordered_events if getattr(event, "process_name", None)]})
+    if event_types.intersection({"registry_persistence", "service_install", "scheduled_task", "wmi_subscription"}) and event_types.intersection({"network_connect", "file_create"}):
+        detection_chains.append({"kind": "지속성 연쇄", "score": 82, "detail": "지속성 등록 뒤 파일 또는 외부 연결 관찰", "event_ids": [event.event_id for event in ordered_events]})
+    if "authentication" in event_types and event_types.intersection({"privilege_use", "remote_access"}):
+        detection_chains.append({"kind": "인증 이상", "score": 76, "detail": "로그인과 권한·원격 접근 징후 결합", "event_ids": [event.event_id for event in ordered_events]})
+    if event_types.intersection({"dns_query", "network_connect", "firewall_connection"}):
+        detection_chains.append({"kind": "DNS·통신 상관", "score": 58, "detail": "프로세스의 이름 조회와 연결 대상을 함께 추적", "event_ids": [event.event_id for event in ordered_events if event.event_type in {"dns_query", "network_connect", "firewall_connection"}]})
+    if "usb_device" in event_types or any("onedrive" in str(getattr(event, "file_path", "")).casefold() for event in ordered_events):
+        detection_chains.append({"kind": "외부 파일 유입", "score": 61, "detail": "USB·공유·클라우드 동기화 유입 가능성", "event_ids": [event.event_id for event in ordered_events]})
+    duplicate_iocs = [{"ioc": ioc, "incident_ids": sorted(ids), "count": len(ids)} for ioc, ids in ioc_incidents.items() if len(ids) > 1 and any(ioc in str(value).casefold() for event in ordered_events for value in (getattr(event, "destination_ip", None), getattr(event, "file_path", None)) if value)]
+
+    current_entities = {value for event in ordered_events for value in (getattr(event, "process_name", None), getattr(event, "destination_ip", None), getattr(event, "file_path", None)) if value}
+    comparison = None
+    best_overlap: set[str] = set()
+    for candidate in baseline_reports:
+        if candidate.incident_id == report.incident_id:
+            continue
+        candidate_entities = {value for event in candidate.source_events for value in (getattr(event, "process_name", None), getattr(event, "destination_ip", None), getattr(event, "file_path", None)) if value}
+        overlap = current_entities.intersection(candidate_entities)
+        if len(overlap) > len(best_overlap):
+            best_overlap = overlap
+            comparison = {"incident_id": candidate.incident_id, "shared": sorted(overlap), "added": sorted(current_entities-candidate_entities), "removed": sorted(candidate_entities-current_entities)}
+
+    shadow_rules = [
+        {"id": "SHADOW-RARE-PARENT", "would_match": any(edge["rare"] for edge in edges.values()), "impact": "희귀 부모-자식 실행을 검토 필요로 제안"},
+        {"id": "SHADOW-DOWNLOAD-CHAIN", "would_match": bool(relation_counts["downloads"]), "impact": "통신 뒤 파일 생성 연쇄를 12점 가중"},
+    ]
+    test_candidates = [
+        {"type": "Sigma", "name": "Process relationship fixture", "safe_event_ids": [event.event_id for event in ordered_events if event.event_type == "process_start"]},
+        {"type": "YARA", "name": "File metadata fixture", "safe_event_ids": [event.event_id for event in ordered_events if event.event_type == "file_create"]},
+    ]
+
     return {
         "nodes": list(nodes.values()), "edges": list(edges.values()),
         "relation_counts": {RELATION_LABELS[key]: value for key, value in relation_counts.items()},
@@ -157,4 +303,34 @@ def analyze_graph(report: IncidentReport, baseline: list[IncidentReport] | None 
         "missing_evidence": missing,
         "connection_explanations": connection_explanations,
         "hourly_activity": [{"hour": f"{hour:02d}", "count": event_counts[f"{hour:02d}"]} for hour in range(24)],
+        "weekly_activity": [{"weekday": day, "hour": hour, "count": weekly_counts[(day, hour)]} for day in range(7) for hour in range(24)],
+        "playback": playback, "attack_paths": attack_paths, "common_path_nodes": common_path_nodes,
+        "clusters": clusters, "baseline": baseline_rows, "adjacency_node_ids": node_ids, "adjacency_matrix": adjacency_matrix,
+        "risk_timeline": risk_timeline, "stage_counts": dict(stage_counts), "detection_chains": detection_chains,
+        "duplicate_iocs": duplicate_iocs, "comparison": comparison, "shadow_rules": shadow_rules,
+        "test_candidates": test_candidates,
+    }
+
+
+def query_graph(insights: dict[str, object], question: str) -> dict[str, object]:
+    """한국어·영문 질의를 로컬에서 관계·노드 조건으로 축약해 검색한다."""
+    normalized = question.casefold().strip()
+    relation_aliases = {
+        "실행": "실행", "생성": "생성", "파일": "파일 생성", "접속": "외부 연결",
+        "연결": "외부 연결", "다운로드": "다운로드 추정", "dns": "DNS 조회", "지속성": "지속성 등록",
+    }
+    requested_relations = {label for token, label in relation_aliases.items() if token in normalized}
+    matches = []
+    for connection in insights.get("connection_explanations", []):
+        haystack = f"{connection['source']} {connection['target']} {connection['why']}".casefold()
+        if requested_relations and not any(label.casefold() in haystack for label in requested_relations):
+            continue
+        terms = [term for term in normalized.replace("에서", " ").replace("까지", " ").split() if len(term) > 1 and term not in relation_aliases]
+        if terms and not any(term in haystack for term in terms):
+            continue
+        matches.append(connection)
+    return {
+        "question": question, "interpreted_relations": sorted(requested_relations),
+        "matches": matches[:30], "matched_node_ids": sorted({node["id"] for node in insights.get("nodes", []) if node["label"].casefold() in normalized}),
+        "summary": f"조건에 맞는 관계 {len(matches)}개를 찾았습니다.",
     }

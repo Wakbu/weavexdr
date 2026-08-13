@@ -112,6 +112,29 @@ class DatabaseLifecycleManager:
         with closing(sqlite3.connect(self.database_path)) as connection:
             return [str(row[3]) for row in connection.execute(f"EXPLAIN QUERY PLAN {sql}", parameters)]
 
+    def optimize(self, *, confirmed: bool) -> dict[str, int | bool]:
+        """온라인 연결을 유지한 채 SQLite 통계와 WAL만 안전하게 정리한다."""
+        if not confirmed:
+            raise PermissionError("database optimization requires explicit confirmation")
+        before = self.health()
+        with closing(sqlite3.connect(self.database_path, timeout=10)) as connection:
+            connection.execute("PRAGMA optimize")
+            connection.execute("PRAGMA wal_checkpoint(PASSIVE)")
+        after = self.health()
+        return {"integrity_ok": after.integrity_ok, "before_bytes": before.database_bytes, "after_bytes": after.database_bytes, "free_pages": after.free_pages}
+
+    def rehearse_latest_backup(self) -> dict[str, object]:
+        """실제 DB를 교체하지 않고 최신 백업의 복구 가능성만 검사한다."""
+        backups = self.list_backups()
+        latest = backups[0] if backups else None
+        return {
+            "available": latest is not None,
+            "file_name": latest.file_name if latest else None,
+            "integrity_ok": latest.integrity_ok if latest else False,
+            "score": 100 if latest and latest.integrity_ok else 0,
+            "mode": "read_only_rehearsal",
+        }
+
     def backup(self) -> Path:
         stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         destination = self.backup_root / f"weavexdr-{stamp}.db"

@@ -46,6 +46,12 @@ def test_investigation_model_content_and_assistant_ux_contracts():
     assert "result.degraded?'concerned':'happy'" in html
     assert "assistant-ponder" in html and "assistant-thought" in html
     assert "bindAssistantDrag" in html and "weavexdr-assistant-position" in html
+    assert "assistantBusy:false" in html
+    assert "if(state.assistantBusy)" in html
+    assert "sendAssistantQuestion(question)" in html
+    assert "profiles={beginner:{hiddenColumns:" in html
+    assert "beginner:{density:" not in html
+    assert "body.dataset.profile=profile" in html
     assert "if(error instanceof TypeError||/failed to fetch/i.test(error.message))accepted=true" in html
     assert html.index('id="system-notices"') > html.index('id="page-overview"')
     assert "paused:'수집 일시정지'" in html and ".connection.paused" in html

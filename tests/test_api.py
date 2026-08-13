@@ -55,6 +55,10 @@ def test_health_is_public_but_incidents_require_a_valid_token():
         assert client.get(
             "/incidents/stats?query=does-not-exist", headers=AUTH
         ).json()["filtered_total"] == 0
+        hunting = client.get("/hunting/overview?window_hours=168", headers=AUTH)
+        assert hunting.status_code == 200
+        assert hunting.json()["privacy"] == "local_only"
+        assert client.get("/hunting/overview?window_hours=2", headers=AUTH).status_code == 422
     finally:
         store.close()
 
@@ -91,6 +95,14 @@ def test_incident_graph_insights_api_returns_explainable_analysis():
         assert payload["edges"]
         assert payload["hypotheses"][0]["evidence_event_ids"]
         assert len(payload["hourly_activity"]) == 24
+        assert len(payload["weekly_activity"]) == 168
+        query = client.post(
+            "/incidents/incident-001/graph-query",
+            headers=AUTH,
+            json={"question": "powershell 연결"},
+        )
+        assert query.status_code == 200
+        assert "summary" in query.json()
         assert client.get("/incidents/missing/graph-insights", headers=AUTH).status_code == 404
     finally:
         store.close()
@@ -116,6 +128,13 @@ def test_storage_health_and_confirmed_backup_api(tmp_path):
         assert (tmp_path / "backups" / backup.json()["file_name"]).is_file()
         backups = client.get("/storage/backups", headers=AUTH).json()
         assert backups[0]["file_name"] == backup.json()["file_name"]
+        insights = client.get("/operations/insights", headers=AUTH)
+        assert insights.status_code == 200
+        assert insights.json()["recovery"]["score"] >= 85
+        assert client.post("/storage/optimize", headers=AUTH, json={"confirmed": False}).status_code == 403
+        assert client.post("/storage/optimize", headers=AUTH, json={"confirmed": True}).json()["integrity_ok"] is True
+        rehearsal = client.post("/storage/rehearse", headers=AUTH, json={"confirmed": True})
+        assert rehearsal.json()["mode"] == "read_only_rehearsal"
         assert client.post("/storage/restore", headers=AUTH, json={"file_name": backups[0]["file_name"], "confirmed": False}).status_code == 403
         staged = client.post("/storage/restore", headers=AUTH, json={"file_name": backups[0]["file_name"], "confirmed": True})
         assert staged.status_code == 200

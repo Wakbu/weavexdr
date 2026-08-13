@@ -31,6 +31,11 @@ def test_database_health_backup_and_index_query_plan(tmp_path):
     assert health.database_bytes > 0
     assert health.estimated_days_remaining and health.estimated_days_remaining > 0
     assert backup.is_file()
+    optimized = manager.optimize(confirmed=True)
+    assert optimized["integrity_ok"] is True
+    rehearsal = manager.rehearse_latest_backup()
+    assert rehearsal["integrity_ok"] is True
+    assert rehearsal["score"] == 100
     assert any("idx_incidents_verdict_risk_time" in row for row in plan)
 
 
