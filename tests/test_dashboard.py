@@ -208,6 +208,8 @@ def test_response_workspace_operations_and_fast_start_are_dedicated_surfaces():
         "판정과 위험도만 크게 표시", "response-impact", "04 · 보호 상태",
         'data-nav="hunting"', 'id="page-hunting"', "/hunting/overview",
         "renderHuntingCenter", "runGuidedHunt", "엔터티 위험 분석", "연관 공격 스토리",
+        'data-nav="exposure"', 'id="page-exposure"', "/exposure/overview",
+        "renderExposureCenter", "renderSoftwarePage", "우선 개선 권고", "최근 30일 공격 표면 신호",
     ):
         assert marker in dashboard
 

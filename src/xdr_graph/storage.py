@@ -154,6 +154,21 @@ class SQLiteEventStore:
                     filters_json TEXT NOT NULL,
                     created_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS custom_detections (
+                    detection_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    search_id INTEGER NOT NULL UNIQUE REFERENCES saved_searches(search_id) ON DELETE CASCADE,
+                    name TEXT NOT NULL,
+                    interval_minutes INTEGER NOT NULL,
+                    state TEXT NOT NULL DEFAULT 'shadow',
+                    last_run_at TEXT,
+                    next_run_at TEXT,
+                    last_match_count INTEGER NOT NULL DEFAULT 0,
+                    estimated_daily_matches REAL NOT NULL DEFAULT 0,
+                    sample_incident_ids_json TEXT NOT NULL DEFAULT '[]',
+                    updated_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_custom_detections_schedule
+                    ON custom_detections (state, next_run_at);
                 CREATE TABLE IF NOT EXISTS incident_feedback_candidates (
                     incident_id TEXT PRIMARY KEY REFERENCES incidents(incident_id) ON DELETE CASCADE,
                     label TEXT NOT NULL,
@@ -333,7 +348,10 @@ class SQLiteEventStore:
                 "ON CONFLICT(name) DO UPDATE SET filters_json=excluded.filters_json",
                 (name.strip(), json.dumps(filters, ensure_ascii=False), now),
             )
-        return {"name": name.strip(), "filters": filters}
+            row = self._connection.execute(
+                "SELECT search_id FROM saved_searches WHERE name = ?", (name.strip(),)
+            ).fetchone()
+        return {"search_id": row["search_id"], "name": name.strip(), "filters": filters}
 
     def list_saved_searches(self) -> list[dict[str, object]]:
         with self._lock:
@@ -346,6 +364,95 @@ class SQLiteEventStore:
         with self._lock, self._connection:
             cursor = self._connection.execute("DELETE FROM saved_searches WHERE search_id = ?", (search_id,))
         return cursor.rowcount > 0
+
+    def get_saved_search(self, search_id: int) -> dict[str, object] | None:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT search_id, name, filters_json FROM saved_searches WHERE search_id = ?",
+                (search_id,),
+            ).fetchone()
+        return None if row is None else {
+            "search_id": row["search_id"], "name": row["name"],
+            "filters": json.loads(row["filters_json"]),
+        }
+
+    def save_custom_detection(self, search_id: int, name: str, interval_minutes: int) -> dict[str, object]:
+        """저장 헌팅을 먼저 shadow 상태로 등록해 검증 없는 자동 판정을 막는다."""
+        if interval_minutes not in {15, 30, 60, 180, 360, 720, 1440}:
+            raise ValueError("invalid custom detection interval")
+        now = self._utc_now()
+        next_run = now + timedelta(minutes=interval_minutes)
+        with self._lock, self._connection:
+            self._connection.execute(
+                "INSERT INTO custom_detections(search_id,name,interval_minutes,state,next_run_at,updated_at) "
+                "VALUES (?,?,?,'shadow',?,?) ON CONFLICT(search_id) DO UPDATE SET "
+                "name=excluded.name, interval_minutes=excluded.interval_minutes, "
+                "state='shadow', next_run_at=excluded.next_run_at, updated_at=excluded.updated_at",
+                (search_id, name.strip(), interval_minutes, next_run.isoformat(), now.isoformat()),
+            )
+        return self.get_custom_detection_by_search(search_id) or {}
+
+    @staticmethod
+    def _custom_detection_from_row(row: sqlite3.Row) -> dict[str, object]:
+        return {
+            "detection_id": row["detection_id"], "search_id": row["search_id"],
+            "name": row["name"], "interval_minutes": row["interval_minutes"],
+            "state": row["state"], "last_run_at": row["last_run_at"],
+            "next_run_at": row["next_run_at"], "last_match_count": row["last_match_count"],
+            "estimated_daily_matches": row["estimated_daily_matches"],
+            "sample_incident_ids": json.loads(row["sample_incident_ids_json"]),
+        }
+
+    def get_custom_detection_by_search(self, search_id: int) -> dict[str, object] | None:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT * FROM custom_detections WHERE search_id = ?", (search_id,)
+            ).fetchone()
+        return None if row is None else self._custom_detection_from_row(row)
+
+    def get_custom_detection(self, detection_id: int) -> dict[str, object] | None:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT * FROM custom_detections WHERE detection_id = ?", (detection_id,)
+            ).fetchone()
+        return None if row is None else self._custom_detection_from_row(row)
+
+    def list_custom_detections(self) -> list[dict[str, object]]:
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT * FROM custom_detections ORDER BY state DESC, name"
+            ).fetchall()
+        return [self._custom_detection_from_row(row) for row in rows]
+
+    def update_custom_detection_run(
+        self, detection_id: int, *, match_count: int, estimated_daily_matches: float,
+        sample_incident_ids: list[str],
+    ) -> dict[str, object] | None:
+        now = self._utc_now()
+        with self._lock, self._connection:
+            row = self._connection.execute(
+                "SELECT interval_minutes FROM custom_detections WHERE detection_id = ?", (detection_id,)
+            ).fetchone()
+            if row is None:
+                return None
+            next_run = now + timedelta(minutes=row["interval_minutes"])
+            self._connection.execute(
+                "UPDATE custom_detections SET last_run_at=?,next_run_at=?,last_match_count=?,"
+                "estimated_daily_matches=?,sample_incident_ids_json=?,updated_at=? WHERE detection_id=?",
+                (now.isoformat(), next_run.isoformat(), match_count, estimated_daily_matches,
+                 json.dumps(sample_incident_ids[:100]), now.isoformat(), detection_id),
+            )
+        return self.get_custom_detection(detection_id)
+
+    def set_custom_detection_state(self, detection_id: int, state: str) -> dict[str, object] | None:
+        if state not in {"shadow", "active", "paused"}:
+            raise ValueError("invalid custom detection state")
+        with self._lock, self._connection:
+            cursor = self._connection.execute(
+                "UPDATE custom_detections SET state=?,updated_at=? WHERE detection_id=?",
+                (state, self._utc_now().isoformat(), detection_id),
+            )
+        return None if cursor.rowcount == 0 else self.get_custom_detection(detection_id)
 
     def list_feedback_candidates(self) -> list[dict[str, object]]:
         with self._lock:

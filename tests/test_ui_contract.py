@@ -52,6 +52,7 @@ def test_investigation_model_content_and_assistant_ux_contracts():
     assert "profiles={beginner:{hiddenColumns:" in html
     assert "beginner:{density:" not in html
     assert "body.dataset.profile=profile" in html
+    assert ".nav { display:grid; gap:5px; min-height:0; overflow-y:auto" in html
     assert "if(error instanceof TypeError||/failed to fetch/i.test(error.message))accepted=true" in html
     assert html.index('id="system-notices"') > html.index('id="page-overview"')
     assert "paused:'수집 일시정지'" in html and ".connection.paused" in html
@@ -63,3 +64,41 @@ def test_investigation_model_content_and_assistant_ux_contracts():
     assert ".shell.sidebar-collapsed .content { max-width:none" in html
     assert "weavexdr-ui-preferences" in html and "applyUiPreferences" in html
     assert 'id="help-drawer"' in html and "renderHelp" in html
+
+
+def test_feature_explanations_share_one_accessible_guide_surface():
+    html = (PROJECT_ROOT / "src" / "xdr_graph" / "static" / "dashboard.html").read_text(encoding="utf-8")
+
+    assert 'id="feature-guide-backdrop"' in html
+    assert 'aria-labelledby="feature-guide-title"' in html
+    assert 'id="feature-guide-role"' in html
+    assert 'id="feature-guide-reading"' in html
+    assert 'id="feature-guide-next"' in html
+    assert 'id="feature-guide-caution"' in html
+    assert "const featureGuides=" in html
+    assert "function addFeatureHelp" in html
+    assert "decorateStaticFeatureCards();" in html
+    assert "return addFeatureHelp(card,title,description)" in html
+    assert "const metricExplanations=" in html
+    assert "box.tabIndex=0" in html
+    assert "if(event.target===event.currentTarget)closeFeatureGuide()" in html
+    assert "classList.contains('open')" in html
+
+
+def test_exposure_protection_score_uses_the_full_grid_width():
+    html = (PROJECT_ROOT / "src" / "xdr_graph" / "static" / "dashboard.html").read_text(encoding="utf-8")
+
+    assert "productCard('보호 영역별 점수'" in html
+    protection_card = html.split("productCard('보호 영역별 점수'", 1)[1].split("initiativeList", 1)[0]
+    assert protection_card.rstrip().endswith("true),")
+
+
+def test_saved_hunting_can_be_promoted_through_shadow_to_active_detection():
+    html = (PROJECT_ROOT / "src" / "xdr_graph" / "static" / "dashboard.html").read_text(encoding="utf-8")
+
+    assert "조건 저장·섀도 반복 시작" in html
+    assert "사용자 지정 탐지 규칙" in html
+    assert "1. 조건 저장" in html and "4. 직접 활성화" in html
+    assert "estimated_daily_matches" in html
+    assert "'/custom-detections'" in html
+    assert "/state`" in html

@@ -59,6 +59,9 @@ def test_health_is_public_but_incidents_require_a_valid_token():
         assert hunting.status_code == 200
         assert hunting.json()["privacy"] == "local_only"
         assert client.get("/hunting/overview?window_hours=2", headers=AUTH).status_code == 422
+        exposure = client.get("/exposure/overview", headers=AUTH)
+        assert exposure.status_code == 200
+        assert exposure.json()["vulnerability_feed"] == "not_configured"
     finally:
         store.close()
 
@@ -219,8 +222,22 @@ def test_demo_cleanup_saved_search_and_merge_split_flow():
         split = client.post(f"/incidents/{merged.json()['incident_id']}/split", headers=AUTH, json={"event_ids": event_ids[:1]})
         assert split.status_code == 200
         assert len(split.json()) == 2
-        assert client.post("/saved-searches", headers=AUTH, json={"name": "고위험", "filters": {"min_risk": 70}}).status_code == 200
+        saved = client.post("/saved-searches", headers=AUTH, json={"name": "고위험", "filters": {"window": "168", "risk": "70"}})
+        assert saved.status_code == 200
         assert client.get("/saved-searches", headers=AUTH).json()[0]["name"] == "고위험"
+        detection = client.post(
+            "/custom-detections", headers=AUTH,
+            json={"search_id": saved.json()["search_id"], "interval_minutes": 15},
+        )
+        assert detection.status_code == 200
+        assert detection.json()["state"] == "shadow"
+        assert detection.json()["last_run_at"]
+        detection_id = detection.json()["detection_id"]
+        activated = client.post(
+            f"/custom-detections/{detection_id}/state", headers=AUTH, json={"state": "active"}
+        )
+        assert activated.status_code == 200
+        assert client.get("/custom-detections", headers=AUTH).json()[0]["state"] == "active"
         assert client.delete("/demo/incidents", headers=AUTH).json()["deleted"] == 2
     finally:
         store.close()

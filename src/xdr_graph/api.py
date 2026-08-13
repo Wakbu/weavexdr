@@ -58,6 +58,8 @@ from xdr_graph.update_manager import GitHubUpdateService
 from xdr_graph.local_model import OllamaModelManager
 from xdr_graph.graph_insights import analyze_graph, query_graph
 from xdr_graph.commercial_analytics import analyze_security_portfolio
+from xdr_graph.exposure_management import build_exposure_overview
+from xdr_graph.custom_detection import CustomDetectionService
 
 
 _command_adapter = TypeAdapter(ResponseCommand)
@@ -207,6 +209,15 @@ class SavedSearchBody(BaseModel):
     filters: dict[str, object]
 
 
+class CustomDetectionBody(BaseModel):
+    search_id: int = Field(gt=0)
+    interval_minutes: Literal[15, 30, 60, 180, 360, 720, 1440] = 60
+
+
+class CustomDetectionStateBody(BaseModel):
+    state: Literal["shadow", "active", "paused"]
+
+
 class DeleteIncidentBody(BaseModel):
     confirmation: str
 
@@ -238,6 +249,7 @@ class ApiRuntime:
     self_protection: SelfProtectionMonitor | None = None
     update_service: GitHubUpdateService | None = None
     model_manager: OllamaModelManager | None = None
+    custom_detection_service: CustomDetectionService | None = None
     event_broker: IncidentEventBroker = field(default_factory=IncidentEventBroker)
     model_status: dict[str, object] = field(
         default_factory=lambda: {"provider": "rule_based", "available": True}
@@ -632,6 +644,43 @@ def create_app(
             raise HTTPException(status_code=404, detail="saved search was not found")
         return Response(status_code=204)
 
+    @app.get("/custom-detections", dependencies=protected)
+    def custom_detections():
+        return runtime.event_store.list_custom_detections()
+
+    @app.post("/custom-detections", dependencies=protected)
+    def create_custom_detection(body: CustomDetectionBody):
+        search = runtime.event_store.get_saved_search(body.search_id)
+        if search is None:
+            raise HTTPException(status_code=404, detail="saved hunting condition was not found")
+        detection = runtime.event_store.save_custom_detection(
+            body.search_id, str(search["name"]), body.interval_minutes
+        )
+        service = runtime.custom_detection_service or CustomDetectionService(runtime.event_store)
+        try:
+            return service.run(int(detection["detection_id"]))
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+
+    @app.post("/custom-detections/{detection_id}/run", dependencies=protected)
+    def run_custom_detection(detection_id: int):
+        service = runtime.custom_detection_service or CustomDetectionService(runtime.event_store)
+        try:
+            return service.run(detection_id)
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+
+    @app.post("/custom-detections/{detection_id}/state", dependencies=protected)
+    def set_custom_detection_state(detection_id: int, body: CustomDetectionStateBody):
+        current = runtime.event_store.get_custom_detection(detection_id)
+        if current is None:
+            raise HTTPException(status_code=404, detail="custom detection was not found")
+        if body.state == "active" and not current.get("last_run_at"):
+            raise HTTPException(status_code=409, detail="run the shadow detection before activation")
+        return runtime.event_store.set_custom_detection_state(detection_id, body.state)
+
     @app.get("/settings", dependencies=protected)
     def settings():
         rules = load_default_detection_engine().bundle
@@ -848,6 +897,22 @@ def create_app(
             return analyze_security_portfolio(reports, window_hours=window_hours)
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
+
+    @app.get("/exposure/overview", dependencies=protected)
+    def exposure_overview():
+        """Assess local device posture without uploading inventory or event data."""
+        reports = runtime.event_store.list_incident_reports(limit=500)
+        with runtime.lock:
+            collector = dict(runtime.collector_status)
+        integrity_state = (
+            runtime.self_protection.verify().state if runtime.self_protection else "not_configured"
+        )
+        return build_exposure_overview(
+            reports,
+            collector_status=collector,
+            integrity_state=integrity_state,
+            startup_active=startup_enabled(),
+        )
 
     @app.post("/storage/optimize", dependencies=protected)
     def optimize_storage(body: BackupBody):
@@ -1269,6 +1334,7 @@ def main() -> None:
         event_store=store,
         dry_run_service=DryRunResponseService(),
         approval_service=ApprovalService(),
+        custom_detection_service=CustomDetectionService(store),
     )
     # 기본 바인딩을 loopback으로 고정한다. 외부 공개는 별도 인증·TLS 설계 없이는 허용하지 않는다.
     uvicorn.run(create_app(runtime, api_token=token), host="127.0.0.1", port=8765)

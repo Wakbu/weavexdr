@@ -50,6 +50,7 @@ from xdr_graph.file_scanner import FileInspectionEngine, YaraScanner
 from xdr_graph.file_watcher import DirectoryFileWatcher, default_watch_directories, removable_watch_directories
 from xdr_graph.native_dialogs import select_scan_paths
 from xdr_graph.security import harden_data_permissions
+from xdr_graph.custom_detection import CustomDetectionService
 
 
 FORCED_SHUTDOWN_TIMEOUT_SECONDS = 20.0
@@ -213,6 +214,7 @@ def main() -> None:
         runtime_monitor=runtime_monitor,
         recovery_state=asdict(recovery_report),
         scan_path_picker=select_scan_paths,
+        custom_detection_service=CustomDetectionService(store),
     )
     # 감사 체인은 실제 대응 활성화 여부와 무관하게 분석·업데이트·복구 상태를
     # 검증해야 하므로 모든 실행 모드에서 연다.
@@ -462,6 +464,9 @@ def main() -> None:
     instance.publish(InstanceRecord(os.getpid(), server_port, APP_VERSION, instance_token, "protecting"))
     tray.start()
     tray.update_status("보호 중")
+    # 개별 규칙마다 타이머를 만들지 않고 단일 스케줄러가 만기 규칙만 조회한다.
+    # 규칙 수가 늘어도 스레드와 Windows 핸들 수는 일정하게 유지된다.
+    runtime.custom_detection_service.start()
     try:
         server.run()
     finally:
@@ -478,6 +483,7 @@ def main() -> None:
         response_expiry_stop.set()
         if response_expiry_thread:
             response_expiry_thread.join(timeout=5)
+        runtime.custom_detection_service.close()
         runtime.scan_manager.close()
         # 종료 버튼과 예외 종료 모두 DB 핸들을 닫아 업데이트·백업 시 파일 잠금이 남지 않게 한다.
         if actual_response:
