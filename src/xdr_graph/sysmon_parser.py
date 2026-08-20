@@ -107,6 +107,8 @@ class SysmonXmlParser:
             image_path=image_path,
             user=fields.get("User"),
             file_hashes=self._parse_hashes(fields.get("Hashes", "")),
+            file_signer=fields.get("Signature"),
+            signature_status=fields.get("SignatureStatus"),
             parent_process=self._image_name(fields.get("ParentImage")),
             parent_process_id=self._parse_int(fields.get("ParentProcessId")),
             parent_process_guid=fields.get("ParentProcessGuid"),

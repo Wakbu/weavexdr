@@ -1,3 +1,11 @@
+"""승인된 대응을 실행 직전 재검증하고 복구 가능한 기록과 함께 수행한다.
+
+dry-run 허용 여부와 command-bound 승인을 먼저 확인한 뒤에도 PID·시작 시각·이미지 경로,
+파일 해시, 방화벽 대상을 실행 순간 다시 검사한다. 이는 조사와 실행 사이에 대상이 바뀌는
+TOCTOU 위험을 줄이기 위한 경계다. 모든 시도와 실패는 감사 로그에 남고 복구 식별자가
+있는 성공만 RecoveryRegistry에 등록한다.
+"""
+
 from __future__ import annotations
 
 import base64
@@ -312,6 +320,11 @@ class ActualResponseService:
         self.max_attempts = max_attempts
 
     def preview_impact(self, command: ResponseCommand, incident_report: IncidentReport) -> ImpactPreview:
+        """실행 없이 영향 대상과 보호 프로세스 포함 여부를 계산한다.
+
+        프로세스 종료는 자식 트리까지 펼쳐 사용자에게 실제 영향 범위를 보여준다. 정책상
+        보호 이름이 하나라도 포함되면 원래 dry-run이 허용해도 최종 `allowed=False`다.
+        """
         preview: DryRunResult = self.dry_run_service.preview(command, incident_report)
         affected: list[str] = []
         protected: list[str] = []
@@ -344,6 +357,12 @@ class ActualResponseService:
         *,
         approval_id: str | None = None,
     ) -> ExecutionResult:
+        """정책·승인·대상 재검증을 통과한 명령을 제한 횟수만 실행한다.
+
+        승인 ID는 특정 command ID에 묶여 다른 대응에 재사용할 수 없다. 각 시도는 별도
+        감사 레코드로 남고, 전부 실패하면 자동으로 성공 처리하지 않고 수동 검토 상태를
+        반환한다. 성공 뒤에만 복구 정보를 등록해 실행되지 않은 작업의 가짜 복구를 막는다.
+        """
         preview = self.dry_run_service.preview(command, incident_report)
         if not preview.allowed:
             return self._blocked(command, "; ".join(preview.reasons))
@@ -360,6 +379,8 @@ class ActualResponseService:
             {"command_id": command.command_id, "incident_id": command.incident_id},
         )
         last_error: Exception | None = None
+        # 일시적인 OS 잠금은 짧은 재시도로 회복할 수 있지만 무한 재시도는 같은 위험
+        # 동작을 반복한다. 생성자에서 최대 3회로 제한하며 기본은 2회다.
         for attempt in range(1, self.max_attempts + 1):
             try:
                 resource_id = self._execute_once(command)
@@ -401,6 +422,7 @@ class ActualResponseService:
         return result
 
     def _execute_once(self, command: ResponseCommand) -> str | None:
+        """명령 종류별 최종 신원 검사를 수행하고 운영체제 변경을 한 번 적용한다."""
         if isinstance(command, TerminateProcessCommand):
             impact = self.preview_impact(command, IncidentReport.model_construct(
                 incident_id=command.incident_id, recommended_actions=[command.action], source_events=[]
@@ -416,6 +438,8 @@ class ActualResponseService:
                     - command.process_start_time.astimezone(timezone.utc)
                 ).total_seconds()
             )
+            # PID는 종료 후 재사용될 수 있다. PID만 같아도 시작 시각 또는 이미지 경로가
+            # 달라지면 사용자가 승인한 프로세스가 아니므로 종료하지 않는다.
             if identity.process_id != command.process_id or time_delta > 1 or actual_path != expected_path:
                 raise ValueError("process identity changed before response")
             inspector = getattr(self.process_controller, "inspect_tree", None)
@@ -428,6 +452,7 @@ class ActualResponseService:
                     self.process_controller.terminate(item.process_id)
             return str(command.process_id)
         if isinstance(command, QuarantineFileCommand):
+            # QuarantineStore가 expected_sha256을 다시 계산해 승인 후 파일 교체를 차단한다.
             item = self.quarantine_store.quarantine(
                 command.file_path,
                 expected_sha256=command.sha256,

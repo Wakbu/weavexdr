@@ -1,3 +1,10 @@
+"""SQLite 기반 사건·이벤트 저장소와 메모리 수집 버퍼를 제공한다.
+
+모든 동적 값은 SQL 매개변수로 전달하고, 정렬·WHERE 조각은 코드에 정의된 허용 목록만
+조합한다. 연결은 재진입 잠금으로 보호하며 쓰기는 connection context의 트랜잭션 안에서
+완료한다. 대량 목록은 서버 페이지 제한을 강제해 UI가 DB 전체를 메모리에 올리지 않는다.
+"""
+
 from __future__ import annotations
 
 import sqlite3
@@ -465,6 +472,11 @@ class SQLiteEventStore:
     def _incident_filter_clause(
         verdict: str | None, query: str | None
     ) -> tuple[str, list[object]]:
+        """허용된 사건 필터를 SQL 조각과 별도 바인딩 값으로 변환한다.
+
+        반환 SQL에는 사용자 문자열이 포함되지 않는다. 호출자는 이 조각 뒤에 LIMIT을
+        붙여 사용하며, 값 목록의 순서는 `?` 자리표시자 순서와 정확히 대응한다.
+        """
         if verdict not in (None, "suspicious", "needs_review", "benign"):
             raise ValueError("invalid incident verdict filter")
         where_parts: list[str] = []
@@ -489,6 +501,11 @@ class SQLiteEventStore:
         verdict: str | None = None,
         query: str | None = None,
     ) -> list[IncidentReport]:
+        """최신 사건 원본을 제한된 페이지로 역직렬화한다.
+
+        분석·내보내기처럼 전체 Pydantic 모델이 필요한 내부 경로용이다. 목록 화면은
+        관리 메타데이터까지 한 JOIN으로 가져오는 `list_incident_views`를 사용한다.
+        """
         if limit < 1 or limit > 500 or offset < 0:
             raise ValueError("invalid incident pagination")
         where_sql, parameters = self._incident_filter_clause(verdict, query)
@@ -518,7 +535,12 @@ class SQLiteEventStore:
         entity: str | None = None,
         sort: str = "updated_desc",
     ) -> list[dict[str, object]]:
-        """Server-side filtering keeps the dashboard bounded for large incident stores."""
+        """사건과 관리 상태를 한 SQL 페이지로 조회한다.
+
+        정렬 열은 사용자 문자열을 SQL에 넣지 않고 고정 딕셔너리에서 선택한다. 사건별
+        추가 SELECT를 하지 않는 LEFT JOIN 구조라 페이지 크기 n에 대해 DB 왕복은 한 번이며,
+        관리 행이 없는 기존 사건은 `_management_from_row`의 기본 상태로 보완한다.
+        """
         if limit < 1 or limit > 500 or offset < 0:
             raise ValueError("invalid incident pagination")
         if verdict not in (None, "suspicious", "needs_review", "benign"):
@@ -618,26 +640,40 @@ class SQLiteEventStore:
         date_from: str | None = None, date_to: str | None = None,
         entity: str | None = None,
     ) -> int:
+        """목록과 동일한 필터의 정확한 전체 건수를 DB에서 직접 계산한다.
+
+        페이지 결과 길이를 전체 건수로 오인하지 않도록 별도 COUNT를 사용한다. 이 함수의
+        조건은 `list_incident_views`와 같은 허용 목록을 유지해야 하며 결과 JSON은 읽지 않는다.
+        """
         clauses: list[str] = []
         parameters: list[object] = []
         if verdict:
             if verdict not in {"suspicious", "needs_review", "benign"}:
                 raise ValueError("invalid incident verdict filter")
-            clauses.append("i.verdict = ?");parameters.append(verdict)
+            clauses.append("i.verdict = ?")
+            parameters.append(verdict)
         if status:
             if status not in {"new", "investigating", "on_hold", "resolved", "false_positive"}:
                 raise ValueError("invalid incident status filter")
-            clauses.append("COALESCE(m.status, 'new') = ?");parameters.append(status)
+            clauses.append("COALESCE(m.status, 'new') = ?")
+            parameters.append(status)
         if min_risk is not None:
-            if not 0 <= min_risk <= 100: raise ValueError("invalid minimum risk")
-            clauses.append("i.risk_score >= ?");parameters.append(min_risk)
-        if date_from: clauses.append("i.updated_at >= ?");parameters.append(date_from)
-        if date_to: clauses.append("i.updated_at <= ?");parameters.append(date_to)
+            if not 0 <= min_risk <= 100:
+                raise ValueError("invalid minimum risk")
+            clauses.append("i.risk_score >= ?")
+            parameters.append(min_risk)
+        if date_from:
+            clauses.append("i.updated_at >= ?")
+            parameters.append(date_from)
+        if date_to:
+            clauses.append("i.updated_at <= ?")
+            parameters.append(date_to)
         for value in (query, entity):
             if value and value.strip():
                 clauses.append("(i.incident_id LIKE ? OR i.report_json LIKE ? OR COALESCE(m.tags_json, '') LIKE ? OR COALESCE(m.custom_title, '') LIKE ?)")
-                pattern=f"%{value.strip()}%";parameters.extend((pattern,pattern,pattern,pattern))
-        where_sql=f"WHERE {' AND '.join(clauses)}" if clauses else ""
+                pattern = f"%{value.strip()}%"
+                parameters.extend((pattern, pattern, pattern, pattern))
+        where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         with self._lock:
             return int(self._connection.execute(
                 f"SELECT COUNT(*) FROM incidents i LEFT JOIN incident_management m USING (incident_id) {where_sql}", parameters
@@ -920,6 +956,11 @@ class EventBuffer:
         )
 
     def enqueue(self, batch: NormalizedEventBatch) -> None:
+        """배치를 FIFO 버퍼에 추가하되 용량 초과를 조용히 숨기지 않는다.
+
+        기본 정책은 명시적 `BufferFullError`다. 선택적 샘플링 정책도 DNS·네트워크처럼
+        반복량이 큰 저우선 이벤트만 균등 간격으로 줄이며 고가치 이벤트는 전부 보존한다.
+        """
         incoming_count = len(batch.events)
         if self._queued_events + incoming_count > self.capacity:
             if self.overflow_policy == "sample_low_priority":
@@ -938,6 +979,7 @@ class EventBuffer:
         self._queued_events += incoming_count
 
     def _sample_to_capacity(self, batch: NormalizedEventBatch) -> NormalizedEventBatch:
+        """남은 슬롯에 저우선 이벤트를 시간 순서가 유지되는 균등 표본으로 축소한다."""
         available = self.capacity - self._queued_events
         if available < 1:
             return batch
@@ -949,7 +991,14 @@ class EventBuffer:
         sample_slots = available - len(protected)
         if sample_slots >= len(sampleable):
             return batch
-        sampled = [] if sample_slots == 0 else [sampleable[min(len(sampleable) - 1, int(index * len(sampleable) / sample_slots))] for index in range(sample_slots)]
+        # 무작위 표본은 실행마다 결과가 달라 조사 재현성이 떨어진다. 전체 범위를
+        # sample_slots 구간으로 나눈 결정적 인덱스를 사용해 처음부터 끝까지 고르게 남긴다.
+        sampled = [] if sample_slots == 0 else [
+            sampleable[
+                min(len(sampleable) - 1, int(index * len(sampleable) / sample_slots))
+            ]
+            for index in range(sample_slots)
+        ]
         selected_ids = {event.event_id for event in [*protected, *sampled]}
         selected = [event for event in batch.events if event.event_id in selected_ids]
         dropped = len(batch.events) - len(selected)
@@ -958,6 +1007,11 @@ class EventBuffer:
         return batch.model_copy(update={"events": selected})
 
     def flush(self, *, max_batches: int | None = None) -> list[IngestionReceipt]:
+        """앞쪽 배치부터 저장하고 성공이 확인된 항목만 큐에서 제거한다.
+
+        sink가 예외를 내면 현재 배치를 머리에 둔 채 호출자에게 전파하므로 재시도할 수 있다.
+        `max_batches`는 한 번의 flush가 수집 스레드를 장시간 독점하지 않게 하는 상한이다.
+        """
         if max_batches is not None and max_batches < 1:
             raise ValueError("max_batches must be at least 1")
 

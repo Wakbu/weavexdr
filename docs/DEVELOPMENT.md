@@ -82,3 +82,36 @@ python -m xdr_graph.benchmark evaluations/baseline_cases.json --model qwen3:8b -
 ```
 
 그래프 검색 실험은 키워드 검색과 공유 엔티티 검색의 recall·평균 지연을 함께 기록한다. 생성형 GraphRAG는 그래프 검색이 정확도를 높이고 로컬 지연 한도를 통과한 경우에만 후보로 취급한다. 장기 그래프 기억은 저장소를 열 때 판정별 기본 보존 기간(정상 30일, 검토 90일, 고위험 180일)을 적용한다.
+
+## 코드 구조 리뷰 갱신
+
+모듈·의존성·함수·클래스·복잡도·테스트 연결과 실제 소스를 포함한 오프라인 리뷰
+페이지는 다음 명령으로 다시 만든다.
+
+```powershell
+.\.venv\Scripts\python.exe scripts\generate_code_review.py
+```
+
+생성 결과는 `docs/code-review.html`이다. 새 모듈이 누락되지 않는지는
+`tests/test_code_review.py`가 검사한다. 정적 연결은 구조 검토용이며 실제 실행 경로와
+분기 커버리지는 다음 순서로 측정한 뒤 페이지를 다시 만들면 모듈별로 함께 표시된다.
+
+```powershell
+.\.venv\Scripts\python.exe -m coverage run -m pytest -q
+.\.venv\Scripts\python.exe -m coverage json -o build/coverage.json
+.\.venv\Scripts\python.exe scripts\generate_code_review.py
+```
+
+## 로직 주석 작성 기준
+
+주석은 함수 이름을 한국어로 반복하지 않고 다음 중 실제 판단에 필요한 내용을 설명한다.
+
+- 입력 검증 뒤 어떤 순서로 처리하며 순서를 바꾸면 무엇이 깨지는지
+- dict·set·deque·인덱스·캐시·배치 같은 자료구조를 선택한 이유와 비용
+- 정상·대체·부분 실패·재시도·복구 경로가 서로 어떻게 구분되는지
+- 승인·TOCTOU 재검증·메모리 상한·SQL 바인딩 같은 보안 경계
+- 값이 추정치인지 관찰 사실인지, 상한과 데이터 기준 범위가 무엇인지
+
+복잡한 공개 함수는 docstring에 역할, 입력·출력, 처리 순서와 실패 계약을 기록하고
+중요 분기 바로 위에는 “왜 이 분기가 필요한가”를 남긴다. 코드 구조 리뷰 페이지는
+중첩 함수와 클래스 메서드의 전체 docstring 및 실제 주석을 함께 표시한다.

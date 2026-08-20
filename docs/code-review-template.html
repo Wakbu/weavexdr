@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WeaveXDR 코드 구조 리뷰</title>
+  <style>
+    :root { color-scheme: dark; --bg:#071018; --panel:#0d1822; --panel2:#101f2b; --line:#263946; --text:#e7f0f4; --muted:#91a7b4; --accent:#63ddd3; --warn:#e8bd67; --danger:#e98388; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); font:14px/1.55 "Segoe UI",sans-serif; }
+    button,input,select { font:inherit; }
+    button { cursor:pointer; }
+    .shell { min-height:100vh; display:grid; grid-template-rows:auto auto 1fr; }
+    header { padding:22px 26px 14px; border-bottom:1px solid var(--line); background:linear-gradient(110deg,#0a1720,#0d222a); }
+    h1 { margin:0 0 5px; font-size:21px; }
+    header p,.muted { color:var(--muted); margin:0; }
+    .stats { display:grid; grid-template-columns:repeat(6,minmax(110px,1fr)); gap:10px; padding:14px 20px; border-bottom:1px solid var(--line); }
+    .stat { background:var(--panel); border:1px solid var(--line); padding:11px 13px; border-radius:8px; }
+    .stat strong { display:block; font-size:19px; color:var(--accent); }
+    .stat span { color:var(--muted); font-size:12px; }
+    .workspace { display:grid; grid-template-columns:minmax(560px,1.4fr) minmax(390px,.8fr); min-height:0; }
+    .map-side { min-width:0; padding:16px; border-right:1px solid var(--line); }
+    .toolbar { display:flex; gap:9px; flex-wrap:wrap; margin-bottom:12px; }
+    .toolbar input,.toolbar select,.toolbar button { min-height:36px; color:var(--text); background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:7px 10px; }
+    .toolbar input { flex:1; min-width:190px; }
+    .toolbar button:hover,.toolbar button:focus-visible { border-color:var(--accent); }
+    .graph-wrap { height:calc(100vh - 205px); min-height:560px; display:grid; grid-template-rows:minmax(0,1fr) auto; overflow:hidden; background:#08131c; border:1px solid var(--line); border-radius:9px; }
+    svg { width:100%; height:100%; min-height:0; display:block; }
+    .group-label { fill:var(--muted); font-size:17px; font-weight:600; letter-spacing:.04em; }
+    .edge { stroke:#314652; stroke-width:1; opacity:.32; }
+    .edge.active { stroke:var(--accent); stroke-width:2.2; opacity:.9; }
+    .node { cursor:pointer; }
+    .node circle { stroke:#7994a3; stroke-width:1.4; transition:stroke-width .15s,filter .15s; }
+    .node:hover circle,.node.selected circle { stroke:var(--accent); stroke-width:3; filter:drop-shadow(0 0 7px rgba(99,221,211,.45)); }
+    .node.dimmed { opacity:.12; }
+    .node text { fill:var(--text); font-size:13px; text-anchor:middle; pointer-events:none; paint-order:stroke; stroke:#071018; stroke-width:4px; }
+    .legend { min-height:39px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:9px 12px; color:var(--muted); font-size:12px; background:#0a1720; border-top:1px solid var(--line); pointer-events:none; }
+    .legend span::before { content:""; display:inline-block; width:9px; height:9px; margin-right:5px; border-radius:50%; background:var(--legend-color); }
+    .detail { min-width:0; padding:18px 20px 30px; overflow:auto; height:calc(100vh - 151px); }
+    .empty { color:var(--muted); margin-top:32px; }
+    .detail h2 { margin:0; font-size:20px; }
+    .path { color:var(--accent); font-family:Consolas,monospace; font-size:12px; word-break:break-all; }
+    .badges { display:flex; gap:6px; flex-wrap:wrap; margin:12px 0 16px; }
+    .badge { background:#132734; border:1px solid #2b4654; border-radius:999px; padding:3px 8px; color:#b9ccd5; font-size:12px; }
+    .tabs { display:flex; gap:4px; border-bottom:1px solid var(--line); margin:14px 0; }
+    .tabs button { color:var(--muted); background:none; border:0; border-bottom:2px solid transparent; padding:9px 11px; }
+    .tabs button.active { color:var(--text); border-color:var(--accent); }
+    .section { margin:18px 0; }
+    .section h3 { margin:0 0 8px; font-size:14px; color:#d7e4e9; }
+    .list { display:grid; gap:7px; }
+    .item { border-left:3px solid #31525e; background:var(--panel); padding:9px 11px; }
+    .item strong { display:block; }
+    .item small { color:var(--muted); }
+    .relation { color:var(--accent); background:none; border:0; padding:2px 4px; text-decoration:underline; text-underline-offset:3px; }
+    .symbol { width:100%; text-align:left; color:var(--text); background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:9px 10px; }
+    .symbol:hover { border-color:#4e6c7c; }
+    .symbol code { color:#bdece7; }
+    .symbol-name { display:block; margin-bottom:3px; color:#88a8b8; font-size:11px; }
+    .symbol-doc { display:block; margin-top:7px; color:#b9cbd3; white-space:pre-line; }
+    pre { margin:0; padding:14px 0; background:#050c12; border:1px solid var(--line); border-radius:7px; overflow:auto; max-height:58vh; font:12px/1.55 Consolas,monospace; tab-size:4; white-space:pre; }
+    .source-line { display:block; min-width:max-content; padding-right:14px; }
+    .source-line:hover { background:#0d1b25; }
+    .line-no { display:inline-block; width:52px; margin-right:14px; padding-right:10px; color:#526a78; text-align:right; border-right:1px solid #182833; user-select:none; }
+    .tok-comment { color:#718b79; font-style:italic; }
+    .tok-string { color:#d5b77a; }
+    .tok-number { color:#b697db; }
+    .tok-keyword { color:#77bcea; font-weight:600; }
+    .tok-function { color:#71dfd2; font-weight:600; }
+    .tok-class { color:#e5c36f; font-weight:600; }
+    .tok-call { color:#89c9e8; }
+    .tok-decorator { color:#dc91b8; }
+    .tok-variable { color:#ef9f8d; }
+    .tok-identifier { color:#d9e5ea; }
+    mark { background:#5a4c24; color:#fff0c2; }
+    .risk { color:var(--warn); }
+    @media (max-width:1000px) { .workspace { grid-template-columns:1fr; } .map-side { border-right:0; } .detail { height:auto; } .graph-wrap { height:620px; } }
+    @media (max-width:720px) { .stats { grid-template-columns:repeat(2,1fr); } header { padding-inline:16px; } .map-side,.detail { padding:12px; } .graph-wrap { min-height:480px; height:68vh; } }
+  </style>
+</head>
+<body>
+<div class="shell">
+  <header>
+    <h1>WeaveXDR 코드 구조 리뷰</h1>
+    <p>노드는 Python 모듈, 선은 내부 import 관계입니다. 노드를 누르면 함수·로직·자료구조와 실제 소스가 열립니다.</p>
+  </header>
+  <section class="stats" id="stats"></section>
+  <main class="workspace">
+    <section class="map-side">
+      <div class="toolbar">
+        <input id="search" type="search" placeholder="모듈·함수·클래스 검색" aria-label="모듈 검색">
+        <select id="group-filter" aria-label="영역 필터"><option value="all">전체 영역</option></select>
+        <button id="reset" type="button">전체 보기</button>
+      </div>
+      <div class="graph-wrap">
+        <svg id="graph" viewBox="0 0 1600 980" role="img" aria-label="WeaveXDR 모듈 의존성 그래프"></svg>
+        <div class="legend" id="legend"></div>
+      </div>
+    </section>
+    <aside class="detail" id="detail"><p class="empty">검토할 모듈 노드를 선택하세요.</p></aside>
+  </main>
+</div>
+<script>/*__CODE_REVIEW_DATA__*/</script>
+<script>
+(() => {
+  const data = window.CODE_REVIEW_DATA;
+  const colors = {interface:'#4dc9c0',collection:'#6fa9df',analysis:'#bc8fe3',graph:'#df9a65',response:'#df7279',storage:'#86b76b',runtime:'#8e9eaa',quality:'#d2b45f',other:'#8494a0'};
+  const byId = new Map(data.modules.map(module => [module.id,module]));
+  const stats = document.getElementById('stats');
+  const graph = document.getElementById('graph');
+  const detail = document.getElementById('detail');
+  const search = document.getElementById('search');
+  const filter = document.getElementById('group-filter');
+  let selected = null;
+  let activeTab = 'overview';
+
+  const statValues = [
+    ['모듈',data.summary.moduleCount+'개'],['공백 제외 소스',data.summary.sourceLines.toLocaleString()+'줄'],
+    ['함수·클래스',data.summary.symbolCount+'개'],['테스트 함수',data.summary.testCount+'개'],
+    ['직접 테스트 연결',data.summary.directlyTestedModules+'/'+data.summary.moduleCount],
+    ['실행 커버리지',data.summary.coverage===null?'미측정':data.summary.coverage+'%']
+  ];
+  stats.innerHTML = statValues.map(([label,value]) => `<div class="stat"><strong>${value}</strong><span>${label}</span></div>`).join('');
+  Object.entries(data.groups).forEach(([id,label]) => filter.insertAdjacentHTML('beforeend',`<option value="${id}">${label}</option>`));
+  document.getElementById('legend').innerHTML = Object.entries(data.groups).filter(([id]) => data.modules.some(module => module.group===id)).map(([id,label]) => `<span style="--legend-color:${colors[id]}">${label}</span>`).join('');
+
+  function escapeHtml(value) { return String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char])); }
+  function highlightedSource(module) {
+    const spansByLine=new Map();
+    module.sourceTokens.forEach(span=>{if(!spansByLine.has(span.line))spansByLine.set(span.line,[]);spansByLine.get(span.line).push(span);});
+    return module.source.split('\n').map((line,index)=>{
+      const lineNumber=index+1; const spans=(spansByLine.get(lineNumber)||[]).sort((a,b)=>a.start-b.start); let cursor=0; let code='';
+      spans.forEach(span=>{if(span.start<cursor)return;code+=escapeHtml(line.slice(cursor,span.start));code+=`<span class="tok-${span.kind}">${escapeHtml(line.slice(span.start,span.end))}</span>`;cursor=span.end;});
+      code+=escapeHtml(line.slice(cursor));
+      return `<span class="source-line" data-source-line="${lineNumber}"><span class="line-no">${lineNumber}</span>${code||' '}</span>`;
+    }).join('');
+  }
+  function moduleMatches(module) {
+    const term = search.value.trim().toLowerCase();
+    const groupMatch = filter.value==='all' || module.group===filter.value;
+    const text = [module.id,module.summary,...module.symbols.map(item=>item.name)].join(' ').toLowerCase();
+    return groupMatch && (!term || text.includes(term));
+  }
+  function positions() {
+    const groups = Object.keys(data.groups).filter(group => data.modules.some(module => module.group===group));
+    const groupWidth = 1600/groups.length;
+    const result = new Map();
+    groups.forEach((group,index) => {
+      const items = data.modules.filter(module => module.group===group);
+      items.forEach((module,row) => {
+        const spread = 790/Math.max(1,items.length-1);
+        result.set(module.id,{x:groupWidth*index+groupWidth/2,y:145+(items.length===1?380:row*spread)});
+      });
+    });
+    return {groups,groupWidth,result};
+  }
+  function draw() {
+    const layout = positions();
+    const related = new Set(selected ? [selected,...byId.get(selected).dependencies,...byId.get(selected).dependents] : []);
+    let svg = '<defs><marker id="arrow" viewBox="0 0 10 10" refX="18" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#506b78"/></marker></defs>';
+    layout.groups.forEach((group,index) => { svg += `<text class="group-label" x="${layout.groupWidth*index+layout.groupWidth/2}" y="54" text-anchor="middle">${escapeHtml(data.groups[group])}</text>`; });
+    data.edges.forEach(edge => {
+      const source=layout.result.get(edge.source),target=layout.result.get(edge.target);
+      const active=selected && (edge.source===selected || edge.target===selected);
+      svg += `<line class="edge${active?' active':''}" x1="${source.x}" y1="${source.y}" x2="${target.x}" y2="${target.y}" marker-end="url(#arrow)"/>`;
+    });
+    data.modules.forEach(module => {
+      const point=layout.result.get(module.id); const radius=Math.max(12,Math.min(27,9+Math.sqrt(module.nonBlank)*.55));
+      const hidden=!moduleMatches(module); const dimmed=hidden || (selected && !related.has(module.id));
+      svg += `<g class="node${selected===module.id?' selected':''}${dimmed?' dimmed':''}" data-id="${module.id}" transform="translate(${point.x} ${point.y})" role="button" aria-label="${escapeHtml(module.id)} 모듈"><circle r="${radius}" fill="${colors[module.group]}"/><text y="${radius+18}">${escapeHtml(module.label)}</text></g>`;
+    });
+    graph.innerHTML=svg;
+    graph.querySelectorAll('.node').forEach(node => node.addEventListener('click',()=>selectModule(node.dataset.id)));
+  }
+  function relationButtons(items) { return items.length ? items.map(id=>`<button class="relation" data-module="${id}">${escapeHtml(id)}</button>`).join(' ') : '<span class="muted">없음</span>'; }
+  function selectModule(id) { selected=id; activeTab='overview'; draw(); renderDetail(); }
+  function tabButton(id,label) { return `<button type="button" data-tab="${id}" class="${activeTab===id?'active':''}">${label}</button>`; }
+  function renderDetail() {
+    if (!selected) { detail.innerHTML='<p class="empty">검토할 모듈 노드를 선택하세요.</p>'; return; }
+    const module=byId.get(selected);
+    const risk = module.nonBlank>700 || module.complexity>150 ? '<span class="badge risk">분리 검토 권장</span>' : '';
+    const coverage = module.coverage===null ? '<span class="badge">커버리지 미측정</span>' : `<span class="badge">커버리지 ${module.coverage}%</span>`;
+    let content='';
+    if (activeTab==='overview') {
+      const techniques=module.techniques.length ? module.techniques.map(item=>`<div class="item"><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.description)}</small></div>`).join('') : '<span class="muted">자동 식별된 주요 기법 없음</span>';
+      content=`<div class="section"><h3>이 모듈의 역할</h3><p>${escapeHtml(module.summary)}</p></div><div class="section"><h3>처리 흐름</h3><p>${escapeHtml(module.flow)}</p></div><div class="section"><h3>주요 입출력</h3><div class="list"><div class="item"><strong>입력</strong><small>${escapeHtml(module.inputs)}</small></div><div class="item"><strong>출력</strong><small>${escapeHtml(module.outputs)}</small></div></div></div><div class="section"><h3>내부 의존 모듈</h3>${relationButtons(module.dependencies)}</div><div class="section"><h3>이 모듈을 사용하는 곳</h3>${relationButtons(module.dependents)}</div><div class="section"><h3>알고리즘·자료구조·구현 기법</h3><div class="list">${techniques}</div></div><div class="section"><h3>직접 연결된 테스트</h3>${module.tests.length?module.tests.map(test=>`<div class="item"><strong>${escapeHtml(test)}</strong></div>`).join(''):'<p class="muted">정적 import 기준 직접 연결 테스트가 없습니다.</p>'}</div>`;
+    } else if (activeTab==='symbols') {
+      content=`<div class="list">${module.symbols.map(item=>`<button class="symbol" data-line="${item.line}"><span class="symbol-name">${escapeHtml(item.name)}</span><code>${escapeHtml(item.signature)}</code><br><small>${escapeHtml(item.kind)} · L${item.line}–${item.endLine} · 복잡도 ${item.complexity}</small>${item.doc?`<span class="symbol-doc">${escapeHtml(item.doc)}</span>`:'<span class="symbol-doc muted">상세 로직 설명이 아직 없습니다.</span>'}</button>`).join('')||'<span class="muted">심볼 없음</span>'}</div>`;
+    } else {
+      content=`<pre id="source-code"><code>${highlightedSource(module)}</code></pre>`;
+    }
+    detail.innerHTML=`<h2>${escapeHtml(module.id)}</h2><div class="path">${escapeHtml(module.path)}</div><div class="badges"><span class="badge">${escapeHtml(data.groups[module.group])}</span><span class="badge">${module.nonBlank.toLocaleString()}줄</span><span class="badge">복잡도 ${module.complexity}</span><span class="badge">심볼 ${module.symbols.length}</span>${coverage}${risk}</div><div class="tabs">${tabButton('overview','구조·로직')}${tabButton('symbols','함수·클래스')}${tabButton('source','실제 코드')}</div>${content}`;
+    detail.querySelectorAll('[data-tab]').forEach(button=>button.addEventListener('click',()=>{activeTab=button.dataset.tab;renderDetail();}));
+    detail.querySelectorAll('[data-module]').forEach(button=>button.addEventListener('click',()=>selectModule(button.dataset.module)));
+    detail.querySelectorAll('[data-line]').forEach(button=>button.addEventListener('click',()=>{const line=Number(button.dataset.line);activeTab='source';renderDetail();const target=detail.querySelector(`[data-source-line="${line}"]`);if(target)target.scrollIntoView({block:'center'});}));
+  }
+  search.addEventListener('input',draw); filter.addEventListener('change',draw);
+  document.getElementById('reset').addEventListener('click',()=>{selected=null;search.value='';filter.value='all';draw();renderDetail();});
+  draw();
+})();
+</script>
+</body>
+</html>

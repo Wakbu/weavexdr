@@ -54,6 +54,10 @@ class ProcessStartEvent(BaseSecurityEvent):
     image_path: str | None = None
     user: str | None = None
     file_hashes: dict[str, str] = Field(default_factory=dict)
+    # Sysmon Event ID 1이 제공하는 서명 정보를 해시와 같은 파일 신원
+    # 근거로 보존한다. 수집 시점에 없으면 미확인이지 미서명 판정이 아니다.
+    file_signer: str | None = None
+    signature_status: str | None = None
     parent_process: str | None = None
     parent_process_id: int | None = Field(default=None, ge=0)
     parent_process_guid: str | None = None

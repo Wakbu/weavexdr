@@ -1,3 +1,10 @@
+"""개별 파일의 메타데이터·서명·YARA·Defender 근거를 하나의 판정으로 합친다.
+
+검사기 하나의 실패를 정상 판정으로 바꾸지 않고 `errors`와 `scanned=False`로 보존한다.
+해시 계산은 고정 블록 스트리밍을 사용하며, 외부 PowerShell·Defender 호출은 제한 시간과
+프로필 플래그로 통제해 대량 검사에서 프로세스 생성 비용이 폭증하지 않게 한다.
+"""
+
 from __future__ import annotations
 
 import base64
@@ -240,6 +247,15 @@ class FileInspectionEngine:
         include_signature: bool = True,
         include_defender: bool = True,
     ) -> FileInspectionResult:
+        """파일 하나를 검증하고 독립 검사 결과를 공통 Finding으로 합친다.
+
+        순서는 ① 정규화된 실재 파일 확인, ② 메모리 안전 크기 제한, ③ 스트리밍 해시와
+        메타데이터, ④ 선택적 Authenticode, ⑤ YARA, ⑥ 선택적 Defender, ⑦ Finding 변환이다.
+        서명·YARA·Defender는 서로 대체하지 않으며 일부 실패에도 나머지 근거를 반환한다.
+
+        `include_signature`와 `include_defender`는 상위 배치 검사기가 같은 검사를 한 번에
+        수행했을 때 중복 외부 프로세스를 피하기 위한 플래그이지 보안 실패를 숨기는 값이 아니다.
+        """
         target_path = Path(file_path).resolve(strict=True)
         if not target_path.is_file():
             raise ValueError(f"inspection target is not a regular file: {target_path}")
@@ -292,6 +308,7 @@ class FileInspectionEngine:
 
     @staticmethod
     def _collect_metadata(target_path: Path) -> FileMetadata:
+        """파일을 1 MiB 블록으로 읽어 O(1) 추가 메모리로 SHA-256을 계산한다."""
         digest = hashlib.sha256()
         # 큰 파일을 한 번에 메모리에 올리지 않도록 고정 크기 블록으로 읽는다.
         with target_path.open("rb") as file_handle:
@@ -313,6 +330,11 @@ class FileInspectionEngine:
         yara_matches: tuple[YaraRuleMatch, ...],
         defender: DefenderResult,
     ) -> tuple[Finding, ...]:
+        """검사기별 고유 결과를 사건 엔진이 이해하는 Finding으로 정규화한다.
+
+        YARA 심각도는 규칙 메타데이터를 유지하고 Defender 악성코드는 최고 심각도로
+        올린다. 단순 미서명은 악성의 충분조건이 아니므로 별도 고위험 Finding을 만들지 않는다.
+        """
         findings = [
             Finding(
                 source="file",

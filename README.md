@@ -160,6 +160,7 @@ python -m venv .venv
 기술 문서:
 
 - [시스템 아키텍처](docs/ARCHITECTURE.md)
+- [인터랙티브 코드 구조 리뷰](docs/code-review.html)
 - [탐지 정책](docs/DETECTION_POLICY.md)
 - [보안 및 대응 정책](docs/SECURITY.md)
 - [개발과 품질 검증](docs/DEVELOPMENT.md)

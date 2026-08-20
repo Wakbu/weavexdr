@@ -42,6 +42,8 @@ def process_create_xml() -> str:
             "CommandLine": "powershell.exe -enc SQBFAFgA",
             "User": "DESKTOP-TEST\\user",
             "Hashes": "SHA256=ABCDEF,IMPHASH=123456",
+            "Signature": "Microsoft Windows Publisher",
+            "SignatureStatus": "Valid",
             "ParentProcessGuid": "{AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE}",
             "ParentProcessId": "3000",
             "ParentImage": "C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE",
@@ -95,6 +97,8 @@ def test_process_create_is_normalized_with_hashes_and_parent():
     assert event.process_id == 4242
     assert event.process_guid == PROCESS_GUID
     assert event.file_hashes == {"SHA256": "abcdef", "IMPHASH": "123456"}
+    assert event.file_signer == "Microsoft Windows Publisher"
+    assert event.signature_status == "Valid"
     assert event.timestamp.tzinfo == timezone.utc
 
 

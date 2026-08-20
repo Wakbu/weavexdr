@@ -1,8 +1,22 @@
+"""사건 이벤트를 설명 가능한 엔터티 그래프와 조사 가설로 변환한다.
+
+노드와 엣지는 dict 해시 키로 중복을 제거하고, 최단 경로는 deque 기반 BFS로 계산한다.
+추론 관계는 관찰 관계와 다른 신뢰도로 표시하며 모든 결과에 원본 이벤트 ID를 남긴다.
+경로 열거는 홉·개수 상한을 둬 순환 그래프의 조합 폭발을 방지한다.
+"""
+
 from __future__ import annotations
 
 from collections import Counter, defaultdict, deque
 from pathlib import PureWindowsPath
+from time import perf_counter
 
+from xdr_graph.investigation_patterns import (
+    detect_advanced_chains,
+    detect_file_identity_changes,
+    graph_review_hints,
+    historical_subgraph_overlay,
+)
 from xdr_graph.models import IncidentReport
 
 
@@ -22,7 +36,14 @@ def analyze_graph(report: IncidentReport, baseline: list[IncidentReport] | None 
 
     추론 결과에는 항상 근거 이벤트 ID를 넣는다. 로컬 AI가 근거 없는 관계를
     사실처럼 답하거나 UI가 관찰 관계와 추론을 혼동하지 않게 하기 위함이다.
+
+    노드 조회와 엣지 중복 제거는 dict/set의 평균 O(1) 연산을 사용한다. 최단 경로 BFS는
+    O(V+E), 제한 경로 탐색은 최대 6홉·8개 결과에서 중단한다. `baseline`은 희귀도를
+    계산하는 비교 집합일 뿐 현재 사건의 판정이나 원본 관계를 변경하지 않는다.
     """
+    analysis_started = perf_counter()
+    # 엔터티 자연키와 (source, target, relation) 튜플을 해시 키로 사용한다. 같은
+    # 이벤트가 재수집되어도 노드·선이 중복되지 않고 근거 ID만 합쳐진다.
     nodes: dict[str, dict[str, str]] = {}
     edges: dict[tuple[str, str, str], dict[str, object]] = {}
 
@@ -86,6 +107,8 @@ def analyze_graph(report: IncidentReport, baseline: list[IncidentReport] | None 
                 for event_id in evidence_ids:
                     add_edge(remote, file_edge["target"], "downloads", event_id, inferred=True)
 
+    # 희귀도는 부모-자식 이름과 이벤트 유형의 빈도다. baseline이 없을 때 현재 사건만
+    # 사용하므로 “처음 관찰”은 절대적인 전역 신규성이 아니라 현재 보유 데이터 기준이다.
     baseline_counts: Counter[str] = Counter()
     for candidate in baseline or [report]:
         for event in candidate.source_events:
@@ -114,6 +137,8 @@ def analyze_graph(report: IncidentReport, baseline: list[IncidentReport] | None 
     starts = [key for key, value in nodes.items() if value["type"] == "external"]
     targets = {key for key, value in nodes.items() if value["type"] in {"file", "persistence"}}
     shortest: list[str] = []
+    # 여러 외부 시작점을 큐에 동시에 넣는 다중 소스 BFS다. 처음 도달한 파일·지속성
+    # 노드의 경로가 간선 수 기준 최단 경로이며, visited로 순환 재방문을 막는다.
     pending = deque((key, [key]) for key in starts)
     visited = set(starts)
     while pending and not shortest:
@@ -270,6 +295,14 @@ def analyze_graph(report: IncidentReport, baseline: list[IncidentReport] | None 
         detection_chains.append({"kind": "DNS·통신 상관", "score": 58, "detail": "프로세스의 이름 조회와 연결 대상을 함께 추적", "event_ids": [event.event_id for event in ordered_events if event.event_type in {"dns_query", "network_connect", "firewall_connection"}]})
     if "usb_device" in event_types or any("onedrive" in str(getattr(event, "file_path", "")).casefold() for event in ordered_events):
         detection_chains.append({"kind": "외부 파일 유입", "score": 61, "detail": "USB·공유·클라우드 동기화 유입 가능성", "event_ids": [event.event_id for event in ordered_events]})
+    # 시간 순서와 파일 이름 연결이 필요한 패턴은 별도 모듈에서 계산한다. 기존의
+    # 사건 유형 존재 여부 기반 규칙과 구분해 잘못된 단계 결합을 줄인다.
+    detection_chains.extend(detect_advanced_chains(ordered_events))
+    # API callers may provide only past incidents as the baseline.  The current
+    # report must still participate in the comparison, otherwise a real change
+    # is silently missed unless callers redundantly include it themselves.
+    identity_reports = [report, *(candidate for candidate in baseline_reports if candidate.incident_id != report.incident_id)]
+    detection_chains.extend(detect_file_identity_changes(report, identity_reports))
     duplicate_iocs = [{"ioc": ioc, "incident_ids": sorted(ids), "count": len(ids)} for ioc, ids in ioc_incidents.items() if len(ids) > 1 and any(ioc in str(value).casefold() for event in ordered_events for value in (getattr(event, "destination_ip", None), getattr(event, "file_path", None)) if value)]
 
     current_entities = {value for event in ordered_events for value in (getattr(event, "process_name", None), getattr(event, "destination_ip", None), getattr(event, "file_path", None)) if value}
@@ -293,6 +326,21 @@ def analyze_graph(report: IncidentReport, baseline: list[IncidentReport] | None 
         {"type": "YARA", "name": "File metadata fixture", "safe_event_ids": [event.event_id for event in ordered_events if event.event_type == "file_create"]},
     ]
 
+    node_lookup: defaultdict[tuple[str, str], list[str]] = defaultdict(list)
+    for node_id, node in nodes.items():
+        node_lookup[("label", node["label"].casefold())].append(node_id)
+        if node_id.startswith("file:"):
+            node_lookup[("label", node_id.removeprefix("file:").casefold())].append(node_id)
+    historical_overlays = historical_subgraph_overlay(report, baseline_reports, node_lookup)
+    review_hints = graph_review_hints(nodes, list(edges.values()), attack_paths)
+    analysis_metrics = {
+        "elapsed_ms": round((perf_counter() - analysis_started) * 1000, 3),
+        "event_count": len(ordered_events),
+        "node_count": len(nodes),
+        "edge_count": len(edges),
+        "baseline_incident_count": len(baseline_reports),
+    }
+
     return {
         "nodes": list(nodes.values()), "edges": list(edges.values()),
         "relation_counts": {RELATION_LABELS[key]: value for key, value in relation_counts.items()},
@@ -308,7 +356,8 @@ def analyze_graph(report: IncidentReport, baseline: list[IncidentReport] | None 
         "clusters": clusters, "baseline": baseline_rows, "adjacency_node_ids": node_ids, "adjacency_matrix": adjacency_matrix,
         "risk_timeline": risk_timeline, "stage_counts": dict(stage_counts), "detection_chains": detection_chains,
         "duplicate_iocs": duplicate_iocs, "comparison": comparison, "shadow_rules": shadow_rules,
-        "test_candidates": test_candidates,
+        "test_candidates": test_candidates, "historical_overlays": historical_overlays,
+        **review_hints, "analysis_metrics": analysis_metrics,
     }
 
 

@@ -196,6 +196,16 @@ def test_opqs_features_are_visible_as_dedicated_investigation_tabs():
         assert marker in dashboard
 
 
+def test_advanced_graph_review_controls_are_visible_in_relations_lab():
+    dashboard = load_dashboard_html()
+    for marker in (
+        "핵심 경로만 표시", "showOnly(insight.core_node_ids)",
+        "과거 서브그래프 중첩", "insight.historical_overlays",
+        "노드 병합·분리 제안", "insight.merge_suggestions",
+    ):
+        assert marker in dashboard
+
+
 def test_response_workspace_operations_and_fast_start_are_dedicated_surfaces():
     dashboard = load_dashboard_html()
     for marker in (

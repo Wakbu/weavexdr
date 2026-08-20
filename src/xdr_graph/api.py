@@ -1,3 +1,11 @@
+"""로컬 대시보드 API와 서비스 경계를 조립한다.
+
+이 모듈은 탐지 로직을 직접 구현하지 않는다. 요청을 loopback·세션 인증으로 제한하고,
+Pydantic으로 검증된 값을 도메인 서비스에 전달한 뒤 내부 예외와 비밀 정보가 브라우저로
+새지 않도록 HTTP 응답으로 변환하는 것이 주된 책임이다. 실제 파일 격리나 프로세스
+종료는 승인·재검증을 담당하는 response 계층으로 위임한다.
+"""
+
 from __future__ import annotations
 
 import hmac
@@ -5,7 +13,6 @@ import json
 import logging
 import os
 import secrets
-import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -21,7 +28,7 @@ import uvicorn
 from fastapi import Cookie, Depends, FastAPI, Header, HTTPException, Request, Response, status
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, TypeAdapter
+from pydantic import TypeAdapter
 
 from xdr_graph.models import IncidentReport
 from xdr_graph.ingestion import NormalizedEventBatch
@@ -33,7 +40,7 @@ from xdr_graph.response import (
     ResponseCommand,
 )
 from xdr_graph.response_execution import ActualResponseService, ExecutionResult, ImpactPreview
-from xdr_graph.response_playbook import PlaybookRun, PlaybookSimulation, ResponsePlaybook, ResponsePlaybookService
+from xdr_graph.response_playbook import PlaybookRun, PlaybookSimulation, ResponsePlaybookService
 from xdr_graph.storage import PersistentIngestionService, SQLiteEventStore
 from xdr_graph.storage_maintenance import (
     ArchiveInfo,
@@ -60,174 +67,44 @@ from xdr_graph.graph_insights import analyze_graph, query_graph
 from xdr_graph.commercial_analytics import analyze_security_portfolio
 from xdr_graph.exposure_management import build_exposure_overview
 from xdr_graph.custom_detection import CustomDetectionService
+from xdr_graph.api_schemas import (
+    ApprovalDecisionBody,
+    ApprovalRequestBody,
+    AssistantQuestionBody,
+    BackupBody,
+    ContentImportBody,
+    CustomDetectionBody,
+    CustomDetectionStateBody,
+    DatabaseRestoreBody,
+    DeleteIncidentBody,
+    ExecuteResponseBody,
+    GraphQueryBody,
+    IncidentManagementBody,
+    MergeIncidentsBody,
+    ModelSelectionBody,
+    PlaybookRequestBody,
+    ReportExportBody,
+    RestoreBody,
+    SavedSearchBody,
+    ScanPathDialogBody,
+    ScanPolicyBody,
+    ScanRequestBody,
+    SessionTokenBody,
+    SigmaImportBody,
+    SplitIncidentBody,
+    StartupBody,
+    StixImportBody,
+    UpdateApplyBody,
+)
+from xdr_graph.static_assets import (
+    load_brand_icon_ico,
+    load_brand_icon_svg,
+    load_dashboard_html,
+    load_world_map_svg,
+)
 
 
 _command_adapter = TypeAdapter(ResponseCommand)
-
-
-def load_dashboard_html() -> str:
-    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-        # PyInstaller one-file 실행 시 소스의 __file__ 위치와 데이터 압축 해제
-        # 위치가 달라질 수 있으므로 공식 임시 번들 루트를 기준으로 찾는다.
-        dashboard_path = Path(sys._MEIPASS) / "xdr_graph" / "static" / "dashboard.html"
-    else:
-        dashboard_path = Path(__file__).parent / "static" / "dashboard.html"
-    return dashboard_path.read_text(encoding="utf-8")
-
-
-def load_world_map_svg() -> str:
-    """Load the bundled public-domain Natural Earth map in source and EXE layouts."""
-    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-        map_path = Path(sys._MEIPASS) / "xdr_graph" / "static" / "world-map.svg"
-    else:
-        map_path = Path(__file__).parent / "static" / "world-map.svg"
-    return map_path.read_text(encoding="utf-8")
-
-
-def load_brand_icon_svg() -> str:
-    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-        icon_path = Path(sys._MEIPASS) / "xdr_graph" / "static" / "weavexdr.svg"
-    else:
-        icon_path = Path(__file__).parent / "static" / "weavexdr.svg"
-    return icon_path.read_text(encoding="utf-8")
-
-
-def load_brand_icon_ico() -> bytes:
-    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-        icon_path = Path(sys._MEIPASS) / "xdr_graph" / "static" / "weavexdr.ico"
-    else:
-        icon_path = Path(__file__).parent / "static" / "weavexdr.ico"
-    return icon_path.read_bytes()
-
-
-class ApprovalRequestBody(BaseModel):
-    command_id: str = Field(min_length=1)
-
-
-class ApprovalDecisionBody(BaseModel):
-    approve: bool
-    approver: str = Field(min_length=1)
-
-
-class ExecuteResponseBody(BaseModel):
-    approval_id: str | None = None
-
-
-class RestoreBody(BaseModel):
-    confirmed: bool
-
-
-class UpdateApplyBody(BaseModel):
-    confirmed: bool
-
-
-class ModelSelectionBody(BaseModel):
-    model: str = Field(min_length=1, max_length=80)
-
-
-class AssistantQuestionBody(BaseModel):
-    question: str = Field(min_length=1, max_length=1000)
-    incident_id: str | None = Field(default=None, max_length=160)
-
-
-class GraphQueryBody(BaseModel):
-    question: str = Field(min_length=1, max_length=500)
-
-
-class PlaybookRequestBody(BaseModel):
-    playbook: ResponsePlaybook
-    approvals: dict[str, str] = Field(default_factory=dict)
-
-
-class BackupBody(BaseModel):
-    confirmed: bool
-
-
-class DatabaseRestoreBody(BaseModel):
-    file_name: str = Field(min_length=1, max_length=260)
-    confirmed: bool
-
-
-class SessionTokenBody(BaseModel):
-    token: str = Field(min_length=32)
-
-
-class IncidentManagementBody(BaseModel):
-    status: str | None = None
-    note: str | None = Field(default=None, max_length=10000)
-    tags: list[str] | None = None
-    bookmarked: bool | None = None
-    checklist: list[str] | None = None
-    custom_title: str | None = Field(default=None, max_length=200)
-    close_reason: str | None = Field(default=None, max_length=1000)
-    archived_at: str | None = None
-    graph_config: dict[str, object] | None = None
-
-
-class StartupBody(BaseModel):
-    enabled: bool
-
-
-class ScanRequestBody(BaseModel):
-    paths: list[str] = Field(default_factory=list, max_length=50)
-    profile: str = "custom"
-
-
-class ScanPathDialogBody(BaseModel):
-    kind: Literal["files", "folder"]
-
-
-class ScanPolicyBody(BaseModel):
-    excluded_paths: list[str] = Field(default_factory=list, max_length=100)
-    excluded_signers: list[str] = Field(default_factory=list, max_length=100)
-    excluded_hashes: list[str] = Field(default_factory=list, max_length=100)
-
-
-class ContentImportBody(BaseModel):
-    source: str
-    path: str = Field(min_length=1)
-    expected_sha256: str | None = None
-
-
-class StixImportBody(BaseModel):
-    path: str = Field(min_length=1)
-    source: str = Field(default="stix", min_length=1)
-
-
-class ReportExportBody(BaseModel):
-    format: Literal["html", "pdf", "csv", "json", "stix", "evidence"]
-    redact: bool = True
-    include_notes: bool = True
-
-
-class SigmaImportBody(BaseModel):
-    payload: str = Field(min_length=1, max_length=5_000_000)
-
-
-class SavedSearchBody(BaseModel):
-    name: str = Field(min_length=1, max_length=80)
-    filters: dict[str, object]
-
-
-class CustomDetectionBody(BaseModel):
-    search_id: int = Field(gt=0)
-    interval_minutes: Literal[15, 30, 60, 180, 360, 720, 1440] = 60
-
-
-class CustomDetectionStateBody(BaseModel):
-    state: Literal["shadow", "active", "paused"]
-
-
-class DeleteIncidentBody(BaseModel):
-    confirmation: str
-
-
-class MergeIncidentsBody(BaseModel):
-    incident_ids: list[str] = Field(min_length=2, max_length=20)
-
-
-class SplitIncidentBody(BaseModel):
-    event_ids: list[str] = Field(min_length=1)
 
 
 @dataclass
@@ -283,6 +160,13 @@ def create_app(
     api_token: str,
     enforce_loopback: bool = True,
 ) -> FastAPI:
+    """프로세스 수명에 묶인 FastAPI 앱을 생성한다.
+
+    처리 순서는 ① 토큰 강도 확인, ② 번들 자원 선검증, ③ 프로세스 전용 브라우저
+    세션 생성, ④ 공통 보안 헤더·오류 경계 등록, ⑤ 공개/보호 라우트 등록이다.
+    `ApiRuntime`은 이미 조립된 서비스만 담기 때문에 라우트가 운영체제 구현을 직접
+    생성하지 않으며 테스트에서는 안전한 대역을 주입할 수 있다.
+    """
     if len(api_token) < 32:
         raise ValueError("API token must contain at least 32 characters")
 
@@ -320,6 +204,12 @@ def create_app(
         return JSONResponse(status_code=500, content={"detail": "internal server error"})
 
     def require_loopback(request: Request) -> None:
+        """원격 소켓과 조작된 Host 헤더를 모두 거부한다.
+
+        client 주소만 검사하면 로컬 프록시를 통한 DNS rebinding을 구분하기 어렵다.
+        따라서 실제 peer 주소와 HTTP Host를 별도로 확인하며, 개발 테스트에서만
+        `enforce_loopback=False`로 이 경계를 명시적으로 해제한다.
+        """
         if enforce_loopback:
             client_host = request.client.host if request.client else ""
             if client_host not in {"127.0.0.1", "::1"}:
@@ -336,6 +226,12 @@ def create_app(
             alias="weavexdr_session",
         ),
     ) -> None:
+        """고정 Bearer 토큰 또는 프로세스 전용 HttpOnly 세션을 상수 시간으로 검증한다.
+
+        브라우저에는 고정 토큰을 저장하지 않고 한 번 교환한 세션만 허용한다. 두 토큰
+        비교에 `compare_digest`를 사용해 일치한 접두사 길이가 응답 시간에 드러나는
+        것을 피한다. 인증 성공 후에도 상태 변경 라우트는 Origin 검사를 추가로 거친다.
+        """
         require_loopback(request)
         scheme, _, supplied_token = (authorization or "").partition(" ")
         valid_bearer = scheme.lower() == "bearer" and hmac.compare_digest(
@@ -563,12 +459,16 @@ def create_app(
 
     @app.post("/incidents/merge", dependencies=protected)
     def merge_incidents(body: MergeIncidentsBody):
+        """여러 사건의 원본 근거를 잃지 않고 새 수동 사건 하나로 병합한다."""
         reports = [runtime.event_store.load_incident_report(value) for value in body.incident_ids]
         if any(report is None for report in reports):
             raise HTTPException(status_code=404, detail="one or more incidents were not found")
         valid_reports = [report for report in reports if report is not None]
         severity = {"benign": 0, "needs_review": 1, "suspicious": 2}
+        # 가장 위험한 사건을 템플릿으로 삼아 낮은 판정이 높은 판정을 덮지 못하게 한다.
         template = max(valid_reports, key=lambda report: severity[report.verdict])
+        # 이벤트 ID와 (규칙 ID, 근거 이벤트 집합)은 자연키다. dict를 사용하면 입력
+        # 사건 수에 비례하는 O(n) 순회 한 번으로 중복을 제거하면서 원 객체를 보존한다.
         events = {event.event_id: event for report in valid_reports for event in report.source_events}
         findings = {(finding.rule_id, tuple(finding.event_ids)): finding for report in valid_reports for finding in report.findings}
         merged = template.model_copy(update={
@@ -585,17 +485,21 @@ def create_app(
 
     @app.post("/incidents/{incident_id}/split", dependencies=protected)
     def split_incident(incident_id: str, body: SplitIncidentBody):
+        """선택 이벤트와 나머지를 각각 독립 조사 가능한 두 사건으로 분리한다."""
         report = runtime.event_store.load_incident_report(incident_id)
         if report is None:
             raise HTTPException(status_code=404, detail="incident was not found")
         selected = set(body.event_ids)
         left = [event for event in report.source_events if event.event_id in selected]
         right = [event for event in report.source_events if event.event_id not in selected]
+        # 한쪽이 비면 복제가 되어 분리의 의미가 없으므로 원본은 그대로 두고 거부한다.
         if not left or not right:
             raise HTTPException(status_code=422, detail="split must leave events on both sides")
         results = []
         for suffix, events in (("a", left), ("b", right)):
             event_ids = {event.event_id for event in events}
+            # Finding은 선택된 이벤트와 근거가 하나라도 겹칠 때만 따라간다. 공격 체인은
+            # 원래 사건 전체 순서에 의존하므로 잘못된 경로를 만들지 않게 비워 재분석한다.
             split = report.model_copy(update={
                 "incident_id": f"split-{uuid4().hex[:10]}-{suffix}",
                 "source_events": events,
@@ -778,6 +682,7 @@ def create_app(
 
     @app.post("/assistant/chat", dependencies=protected)
     def local_assistant_chat(body: AssistantQuestionBody):
+        """최소 사건 문맥만 로컬 모델에 전달하는 읽기 전용 질문 경계다."""
         if runtime.model_manager is None:
             raise HTTPException(status_code=503, detail="local model management is unavailable")
         if any(keyword in body.question.casefold() for keyword in ("삭제해", "격리해", "차단해", "종료해", "kill ", "delete ", "block ")):
@@ -788,6 +693,7 @@ def create_app(
                 "provider": "safety-policy", "model": None, "latency_ms": 0, "degraded": False,
                 "read_only_conversion": True,
             }
+        # 모델 입력 크기와 개인정보 노출 범위를 고정하기 위해 최근 12건으로 제한한다.
         incidents = runtime.event_store.list_incident_views(limit=12, sort="updated_desc")
         if body.incident_id:
             selected_view = runtime.event_store.load_incident_view(body.incident_id)
@@ -855,6 +761,12 @@ def create_app(
 
     @app.get("/operations/insights", dependencies=protected)
     def operations_insights():
+        """센서·저장소·복구 가능성을 읽기 전용 운영 지표로 합성한다.
+
+        DB 증가량은 생성 이후 평균값을 사용한 단순 선형 추정이며 용량 예측이지 보안
+        판정이 아니다. 복구 점수는 무결성·검증 백업·롤백 가능성이라는 확인 가능한
+        세 조건만 더하고, 백업이 있다는 사실만으로 복구 성공을 단정하지 않는다.
+        """
         if runtime.storage_manager is None:
             raise HTTPException(status_code=503, detail="storage maintenance is unavailable")
         health = runtime.storage_manager.health()
@@ -933,6 +845,11 @@ def create_app(
 
     @app.post("/scans", dependencies=protected)
     def start_scan(body: ScanRequestBody):
+        """검사 정책을 검증한 뒤 비동기 파일 검사 작업 하나를 시작한다.
+
+        라우트는 파일을 직접 열지 않는다. 중복 실행 방지·경로 열거·취소·진행률은
+        `ScanJobManager`가 한 작업 ID 아래 관리하므로 HTTP 요청이 오래 점유되지 않는다.
+        """
         if runtime.scan_manager is None:
             raise HTTPException(status_code=503, detail="file scanner is unavailable")
         if body.profile not in {"quick", "full", "custom"}:
