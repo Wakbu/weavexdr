@@ -25,7 +25,7 @@ GROUP_RULES = (
     ("response", {"response", "response_execution", "response_playbook", "quarantine", "reporting", "audit"}),
     ("storage", {"storage", "storage_maintenance", "events", "custom_detection"}),
     ("runtime", {"startup", "instance", "security", "self_protection", "runtime_security", "runtime_recovery", "runtime_health", "logging_setup", "update_manager", "version"}),
-    ("quality", {"evaluation", "benchmark", "release_validation", "models", "threat_intelligence", "antivirus", "file_scanner"}),
+    ("quality", {"evaluation", "benchmark", "release_validation", "models", "threat_intelligence", "antivirus", "file_scanner", "safe_simulation"}),
 )
 
 GROUP_LABELS = {
@@ -81,6 +81,7 @@ MODULE_GUIDES = {
     "response_playbook": ("여러 대응 단계를 순서와 승인 조건이 있는 플레이북으로 묶습니다.", "각 단계의 영향 범위를 먼저 시뮬레이션하고 승인된 단계만 순차 실행합니다.", "플레이북·단계별 승인", "시뮬레이션·실행 결과"),
     "retrieval": ("질문과 관련된 과거 사건·그래프 근거를 찾습니다.", "키워드 검색과 공유 엔터티 그래프 검색을 제한 결과로 결합합니다.", "조사 질문·현재 사건", "근거 사건·그래프 문맥"),
     "risk_policy": ("여러 탐지 결과를 일관된 사건 위험도로 환산합니다.", "판정·심각도·근거 수에 정책 가중치를 적용하고 상한을 보정합니다.", "탐지 결과", "위험 점수·판정"),
+    "safe_simulation": ("실제 시스템을 변경하지 않는 공격 유사 합성 이벤트를 만듭니다.", "문서용 IP와 존재하지 않는 경로로 인증·유입·실행·파일·지속성 이벤트를 데이터로만 구성합니다.", "시뮬레이션 시각·식별자", "정규화 안전 시뮬레이션 배치"),
     "runtime_health": ("실행 중 CPU·메모리·디스크·센서 지연을 감시합니다.", "주기 표본과 변화율을 계산해 저전력·장기 증가·수집 공백 상태를 보고합니다.", "프로세스·시스템 표본", "런타임 건강 상태"),
     "runtime_recovery": ("비정상 종료 뒤 데이터와 런타임 상태를 안전하게 복구합니다.", "잠금·DB 무결성·백업을 확인하고 필요한 최소 복구만 수행합니다.", "시작 상태·저장소", "복구 보고서"),
     "runtime_security": ("실행 환경의 위험한 설정과 권한을 시작 전에 검사합니다.", "바인딩 주소·토큰·파일 권한·보안 옵션을 정책과 비교합니다.", "실행 설정", "보안 검증 결과"),

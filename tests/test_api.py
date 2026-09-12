@@ -107,6 +107,20 @@ def test_incident_graph_insights_api_returns_explainable_analysis():
         assert query.status_code == 200
         assert "summary" in query.json()
         assert client.get("/incidents/missing/graph-insights", headers=AUTH).status_code == 404
+        insights = response.json()
+        path = client.post(
+            "/incidents/incident-001/graph-path", headers=AUTH,
+            json={"start_node_id": insights["edges"][0]["source"], "end_node_id": insights["edges"][0]["target"]},
+        )
+        assert path.status_code == 200
+        assert path.json()["hop_count"] == 1
+        process_node = next(node["id"] for node in insights["nodes"] if node["type"] == "process")
+        comparison = client.post(
+            "/incidents/incident-001/response-graph", headers=AUTH,
+            json={"blocked_node_ids": [process_node]},
+        )
+        assert comparison.status_code == 200
+        assert comparison.json()["simulation_only"] is True
     finally:
         store.close()
 
@@ -341,7 +355,10 @@ def test_status_and_safe_demo_incident_flow():
         demo = demo_response.json()
         assert demo["incident_id"].startswith("demo-incident-")
         assert demo["verdict"] == "suspicious"
-        assert len(demo["source_events"]) == 3
+        assert len(demo["source_events"]) == 5
+        assert {event["event_type"] for event in demo["source_events"]} >= {
+            "authentication", "network_connect", "process_start", "file_create", "registry_persistence"
+        }
         assert client.get(
             f"/incidents/{demo['incident_id']}", headers=AUTH
         ).status_code == 200

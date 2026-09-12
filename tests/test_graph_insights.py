@@ -1,4 +1,4 @@
-from xdr_graph.graph_insights import analyze_graph, query_graph
+from xdr_graph.graph_insights import analyze_graph, compare_response_graph, find_attack_path, query_graph
 from xdr_graph.models import IncidentReport
 
 
@@ -11,6 +11,7 @@ def test_graph_insights_explain_relationships_paths_and_hypotheses():
             {"event_id": "p1", "event_type": "process_start", "timestamp": "2026-08-13T01:00:00+09:00", "process_name": "powershell.exe", "process_guid": "proc-1", "parent_process": "winword.exe"},
             {"event_id": "n1", "event_type": "network_connect", "timestamp": "2026-08-13T01:01:00+09:00", "process_name": "powershell.exe", "process_guid": "proc-1", "destination_ip": "8.8.8.8", "destination_port": 443, "protocol": "tcp"},
             {"event_id": "f1", "event_type": "file_create", "timestamp": "2026-08-13T01:02:00+09:00", "process_name": "powershell.exe", "process_guid": "proc-1", "file_path": "C:\\Temp\\payload.exe"},
+            {"event_id": "a1", "event_type": "authentication", "timestamp": "2026-08-13T01:03:00+09:00", "windows_event_id": 4625, "channel": "Security", "action": "logon_failed", "user": "alice", "source_ip": "10.0.0.8", "outcome": "failure"},
         ],
     })
     result = analyze_graph(report, [report])
@@ -28,10 +29,22 @@ def test_graph_insights_explain_relationships_paths_and_hypotheses():
     assert len(result["adjacency_matrix"]) == len(result["adjacency_node_ids"])
     assert result["risk_timeline"][-1]["risk"] >= 0
     assert result["clusters"]
+    assert {edge["style"] for edge in result["edges"]} >= {"network", "file", "download", "authentication"}
+    assert result["stage_graphs"]
+    assert result["blast_radius"]["paths"]
+    assert result["forensic_timeline"]["items"]
+    assert {item["lane"] for item in result["forensic_timeline"]["items"]} >= {"프로세스", "파일·지속성", "네트워크·인증"}
     assert result["detection_chains"]
     query = query_graph(result, "powershell 연결")
     assert query["matches"]
     assert query["matches"][0]["evidence_event_ids"]
+    path = find_attack_path(result, "process:proc-1", "file:C:\\Temp\\payload.exe")
+    assert path["path"][-1] == "file:C:\\Temp\\payload.exe"
+    assert path["hop_count"] == 1
+    comparison = compare_response_graph(result, ["process:proc-1"])
+    assert comparison["simulation_only"] is True
+    assert comparison["after"]["risk"] <= comparison["before"]["risk"]
+    assert comparison["removed_edge_indexes"]
 
 
 def _report(incident_id: str, events: list[dict]) -> IncidentReport:

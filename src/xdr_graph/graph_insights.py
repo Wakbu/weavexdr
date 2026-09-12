@@ -28,7 +28,89 @@ RELATION_LABELS = {
     "persists": "지속성 등록",
     "queries": "DNS 조회",
     "downloads": "다운로드 추정",
+    "authenticates": "인증",
 }
+
+RELATION_STYLES = {
+    "runs": "execution", "spawns": "spawn", "creates": "file",
+    "connects": "network", "persists": "persistence", "queries": "dns",
+    "downloads": "download",
+    "authenticates": "authentication",
+}
+
+
+def find_attack_path(insights: dict[str, object], start_node_id: str, end_node_id: str) -> dict[str, object]:
+    """사용자가 고른 두 노드 사이의 최단 방향 경로를 제한 BFS로 찾는다.
+
+    서버가 반환한 노드 ID만 허용하고 각 노드를 한 번만 방문한다. 따라서 잘못된 ID나
+    순환 관계가 들어와도 탐색 비용은 O(V+E)를 넘지 않으며 그래프를 변경하지 않는다.
+    """
+    node_ids = {str(node["id"]) for node in insights.get("nodes", [])}
+    if start_node_id not in node_ids or end_node_id not in node_ids:
+        raise ValueError("start and end nodes must exist in this incident graph")
+    pending = deque([(start_node_id, [start_node_id])])
+    visited = {start_node_id}
+    adjacency: defaultdict[str, list[str]] = defaultdict(list)
+    for edge in insights.get("edges", []):
+        adjacency[str(edge["source"])].append(str(edge["target"]))
+    while pending:
+        current, path = pending.popleft()
+        if current == end_node_id:
+            return {"start_node_id": start_node_id, "end_node_id": end_node_id, "path": path, "hop_count": len(path) - 1}
+        for candidate in adjacency[current]:
+            if candidate not in visited:
+                visited.add(candidate)
+                pending.append((candidate, [*path, candidate]))
+    return {"start_node_id": start_node_id, "end_node_id": end_node_id, "path": [], "hop_count": None}
+
+
+def compare_response_graph(insights: dict[str, object], blocked_node_ids: list[str]) -> dict[str, object]:
+    """가상 차단 전후의 경로와 잔여 위험을 계산하되 실제 시스템은 변경하지 않는다.
+
+    UI에서 받은 ID는 현재 사건 그래프에 존재하는 값만 허용한다. 공격 경로가 있으면
+    차단 뒤 남은 경로 비율을, 경로가 없으면 남은 관계 위험 기여도 비율을 사용한다.
+    이는 대응 우선순위 비교용 추정치이며 실제 차단 성공 판정으로 사용하지 않는다.
+    """
+    nodes = insights.get("nodes", [])
+    edges = insights.get("edges", [])
+    valid_ids = {str(node["id"]) for node in nodes}
+    blocked = set(blocked_node_ids)
+    if not blocked or not blocked <= valid_ids:
+        raise ValueError("blocked nodes must exist in this incident graph")
+
+    before_paths = [list(path) for path in insights.get("attack_paths", [])]
+    after_paths = [path for path in before_paths if blocked.isdisjoint(path)]
+    before_edge_indexes = list(range(len(edges)))
+    after_edge_indexes = [
+        index for index, edge in enumerate(edges)
+        if edge["source"] not in blocked and edge["target"] not in blocked
+    ]
+    if before_paths:
+        residual_ratio = len(after_paths) / len(before_paths)
+    else:
+        before_weight = max(1, sum(int(edge.get("risk_contribution", 0)) for edge in edges))
+        after_weight = sum(int(edges[index].get("risk_contribution", 0)) for index in after_edge_indexes)
+        residual_ratio = after_weight / before_weight
+    before_risk = int(insights.get("incident_risk_score", 0))
+    after_risk = round(before_risk * residual_ratio)
+    after_nodes = sorted({
+        node_id for index in after_edge_indexes
+        for node_id in (str(edges[index]["source"]), str(edges[index]["target"]))
+    })
+    target_ids = set(insights.get("blast_radius", {}).get("target_node_ids", []))
+    return {
+        "blocked_node_ids": sorted(blocked),
+        "before": {"node_ids": sorted(valid_ids), "edge_indexes": before_edge_indexes, "path_count": len(before_paths), "risk": before_risk},
+        "after": {
+            "node_ids": after_nodes, "edge_indexes": after_edge_indexes,
+            "path_count": len(after_paths), "risk": after_risk,
+            "reachable_target_node_ids": sorted({path[-1] for path in after_paths if path and path[-1] in target_ids}),
+        },
+        "removed_edge_indexes": sorted(set(before_edge_indexes) - set(after_edge_indexes)),
+        "risk_reduction": before_risk - after_risk,
+        "residual_risk": after_risk,
+        "simulation_only": True,
+    }
 
 
 def analyze_graph(report: IncidentReport, baseline: list[IncidentReport] | None = None) -> dict[str, object]:
@@ -94,6 +176,10 @@ def analyze_graph(report: IncidentReport, baseline: list[IncidentReport] | None 
             if target:
                 domain = add_node(f"domain:{target}", "external", str(target))
                 add_edge(process, domain, "queries", event.event_id)
+        elif event.event_type == "authentication":
+            user_label = getattr(event, "user", None) or "알 수 없는 사용자"
+            user = add_node(f"identity:{user_label.casefold()}", "identity", user_label)
+            add_edge(user, host, "authenticates", event.event_id)
 
     # 동일 프로세스의 외부 연결 직후 파일 생성은 다운로드일 수 있지만 직접
     # 관찰된 사실은 아니므로 점선·낮은 신뢰도의 추론 관계로만 제공한다.
@@ -121,19 +207,21 @@ def analyze_graph(report: IncidentReport, baseline: list[IncidentReport] | None 
         edge["rare"] = baseline_counts[f"process_start:{source}:{target}"] <= 1 if edge["relation"] == "spawns" else False
 
     event_by_id = {event.event_id: event for event in report.source_events}
-    relation_risk = {"runs": 4, "spawns": 14, "creates": 18, "connects": 16, "persists": 24, "queries": 9, "downloads": 22}
+    relation_risk = {"runs": 4, "spawns": 14, "creates": 18, "connects": 16, "persists": 24, "queries": 9, "downloads": 22, "authenticates": 12}
     for edge in edges.values():
         observed = [event_by_id[event_id].timestamp for event_id in edge["evidence_event_ids"] if event_id in event_by_id]
         edge["first_seen"] = min(observed).isoformat() if observed else None
         edge["last_seen"] = max(observed).isoformat() if observed else None
         edge["risk_contribution"] = min(40, relation_risk[edge["relation"]] + max(0, len(edge["evidence_event_ids"]) - 1) * 2)
         edge["first_observed"] = edge["rare"]
+        edge["source_label"] = nodes[edge["source"]]["label"]
+        edge["target_label"] = nodes[edge["target"]]["label"]
+        edge["style"] = RELATION_STYLES[edge["relation"]]
 
     # 외부 노드에서 파일·지속성 노드까지의 가장 짧은 관찰 경로를 우선 제시한다.
     adjacency: dict[str, list[str]] = {}
     for edge in edges.values():
         adjacency.setdefault(edge["source"], []).append(edge["target"])
-        adjacency.setdefault(edge["target"], []).append(edge["source"])
     starts = [key for key, value in nodes.items() if value["type"] == "external"]
     targets = {key for key, value in nodes.items() if value["type"] in {"file", "persistence"}}
     shortest: list[str] = []
@@ -167,6 +255,38 @@ def analyze_graph(report: IncidentReport, baseline: list[IncidentReport] | None 
                 pending_paths.append((candidate, [*path, candidate]))
     path_counts = Counter(node_id for path in attack_paths for node_id in path)
     common_path_nodes = [node_id for node_id, count in path_counts.items() if count > 1]
+    # 시작·표적을 제외하고 여러 공격 경로가 겹치는 노드를 병목점으로 본다.
+    # 경로 개수와 홉 상한은 위에서 이미 제한했으므로 큰 사건에서도 계산량이 작다.
+    choke_points = [
+        {"node_id": node_id, "path_count": count, "label": nodes[node_id]["label"], "type": nodes[node_id]["type"]}
+        for node_id, count in path_counts.most_common()
+        if count > 1 and node_id not in set(starts) | targets
+    ]
+    edge_indexes_by_pair = {
+        frozenset((str(edge["source"]), str(edge["target"]))): index
+        for index, edge in enumerate(edges.values())
+    }
+    blast_paths = []
+    for path in attack_paths:
+        edge_indexes = [
+            edge_indexes_by_pair[frozenset((left, right))]
+            for left, right in zip(path, path[1:])
+            if frozenset((left, right)) in edge_indexes_by_pair
+        ]
+        blast_paths.append({
+            "node_ids": path,
+            "edge_indexes": edge_indexes,
+            "potential": any(list(edges.values())[index]["inferred"] for index in edge_indexes),
+        })
+    blast_radius = {
+        "entry_node_ids": sorted(starts),
+        "target_node_ids": sorted(targets),
+        "reachable_node_ids": sorted({node_id for path in attack_paths for node_id in path}),
+        "choke_points": choke_points,
+        "paths": blast_paths,
+        "observed_path_count": sum(not path["potential"] for path in blast_paths),
+        "potential_path_count": sum(path["potential"] for path in blast_paths),
+    }
 
     relation_counts = Counter(edge["relation"] for edge in edges.values())
     event_counts = Counter(event.timestamp.astimezone().strftime("%H") for event in report.source_events)
@@ -281,6 +401,65 @@ def analyze_graph(report: IncidentReport, baseline: list[IncidentReport] | None 
         "dns_query": "외부 통신", "defender_detection": "영향",
     }
     stage_counts = Counter(stage_for_type.get(event.event_type, "기타") for event in ordered_events)
+    # 작은 다중 그래프는 단계별 이벤트가 근거인 관계만 포함한다. 노드·관계 ID를
+    # 재사용하므로 별도 그래프 복사 없이 단계 간 공통점과 변화만 비교할 수 있다.
+    event_stage = {event.event_id: stage_for_type.get(event.event_type, "기타") for event in ordered_events}
+    indexed_edges = list(edges.values())
+    stage_graphs = []
+    for stage in dict.fromkeys(event_stage.values()):
+        stage_edge_indexes = [
+            index for index, edge in enumerate(indexed_edges)
+            if any(event_stage.get(event_id) == stage for event_id in edge["evidence_event_ids"])
+        ]
+        stage_node_ids = sorted({
+            node_id for index in stage_edge_indexes
+            for node_id in (indexed_edges[index]["source"], indexed_edges[index]["target"])
+        })
+        stage_graphs.append({"stage": stage, "event_count": stage_counts[stage], "node_ids": stage_node_ids, "edge_indexes": stage_edge_indexes})
+
+    # 그래프 재생과 같은 이벤트 ID·관계 인덱스를 재사용하는 포렌식 스윔레인이다.
+    # UI는 별도 상관분석 없이 타임라인 점을 클릭해 정확한 그래프 근거로 이동한다.
+    lane_for_type = {
+        "process_start": "프로세스", "powershell_script": "프로세스",
+        "file_create": "파일·지속성", "registry_persistence": "파일·지속성",
+        "service_install": "파일·지속성", "scheduled_task": "파일·지속성",
+        "wmi_subscription": "파일·지속성", "network_connect": "네트워크·인증",
+        "dns_query": "네트워크·인증", "firewall_connection": "네트워크·인증",
+        "authentication": "네트워크·인증", "remote_access": "네트워크·인증",
+    }
+    forensic_items = []
+    for event in ordered_events:
+        candidate_labels = (
+            getattr(event, "process_name", None), getattr(event, "file_path", None),
+            getattr(event, "destination_ip", None), getattr(event, "target", None),
+            getattr(event, "action", None), event.event_type,
+        )
+        forensic_items.append({
+            "id": event.event_id, "event_id": event.event_id,
+            "timestamp": event.timestamp.isoformat(),
+            "lane": lane_for_type.get(event.event_type, "기타"),
+            "event_type": event.event_type,
+            "label": next(str(value) for value in candidate_labels if value),
+            "edge_indexes": [index for index, edge in enumerate(indexed_edges) if event.event_id in edge["evidence_event_ids"]],
+            "severity": 0,
+        })
+    for finding in report.findings:
+        related = [event_by_id[event_id] for event_id in finding.event_ids if event_id in event_by_id]
+        if related:
+            forensic_items.append({
+                "id": f"finding:{finding.rule_id}:{finding.event_ids[0]}",
+                "event_id": finding.event_ids[0], "timestamp": min(event.timestamp for event in related).isoformat(),
+                "lane": "탐지", "event_type": "finding", "label": finding.rule_id,
+                "edge_indexes": sorted({index for event_id in finding.event_ids for index, edge in enumerate(indexed_edges) if event_id in edge["evidence_event_ids"]}),
+                "severity": finding.severity,
+            })
+    forensic_items.sort(key=lambda value: (value["timestamp"], value["lane"], value["id"]))
+    forensic_timeline = {
+        "lanes": ["프로세스", "파일·지속성", "네트워크·인증", "탐지", "기타"],
+        "start": ordered_events[0].timestamp.isoformat() if ordered_events else None,
+        "end": ordered_events[-1].timestamp.isoformat() if ordered_events else None,
+        "items": forensic_items,
+    }
 
     detection_chains = []
     event_types = {event.event_type for event in ordered_events}
@@ -343,6 +522,7 @@ def analyze_graph(report: IncidentReport, baseline: list[IncidentReport] | None 
 
     return {
         "nodes": list(nodes.values()), "edges": list(edges.values()),
+        "incident_risk_score": report.risk_score,
         "relation_counts": {RELATION_LABELS[key]: value for key, value in relation_counts.items()},
         "rare_relation_count": sum(bool(edge["rare"]) for edge in edges.values()),
         "shortest_path": shortest,
@@ -353,8 +533,9 @@ def analyze_graph(report: IncidentReport, baseline: list[IncidentReport] | None 
         "hourly_activity": [{"hour": f"{hour:02d}", "count": event_counts[f"{hour:02d}"]} for hour in range(24)],
         "weekly_activity": [{"weekday": day, "hour": hour, "count": weekly_counts[(day, hour)]} for day in range(7) for hour in range(24)],
         "playback": playback, "attack_paths": attack_paths, "common_path_nodes": common_path_nodes,
+        "blast_radius": blast_radius, "forensic_timeline": forensic_timeline,
         "clusters": clusters, "baseline": baseline_rows, "adjacency_node_ids": node_ids, "adjacency_matrix": adjacency_matrix,
-        "risk_timeline": risk_timeline, "stage_counts": dict(stage_counts), "detection_chains": detection_chains,
+        "risk_timeline": risk_timeline, "stage_counts": dict(stage_counts), "stage_graphs": stage_graphs, "detection_chains": detection_chains,
         "duplicate_iocs": duplicate_iocs, "comparison": comparison, "shadow_rules": shadow_rules,
         "test_candidates": test_candidates, "historical_overlays": historical_overlays,
         **review_hints, "analysis_metrics": analysis_metrics,

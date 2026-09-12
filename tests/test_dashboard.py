@@ -201,7 +201,12 @@ def test_advanced_graph_review_controls_are_visible_in_relations_lab():
     for marker in (
         "핵심 경로만 표시", "showOnly(insight.core_node_ids)",
         "과거 서브그래프 중첩", "insight.historical_overlays",
-        "노드 병합·분리 제안", "insight.merge_suggestions",
+        "노드 병합·분리 교정 이력", "insight.merge_suggestions",
+        "edge-network", "edge-authentication", "/graph-path", "반복 시작 설정", "이벤트로 점프",
+        "recordGraphCorrection", "correctionHistory", "renderStageMiniGraph",
+        "공격 단계별 다중 그래프 비교", "공격 반경·병목점", "blast_radius",
+        "renderForensicSwimlane", "forensic-swimlane", "포렌식 스윔레인",
+        "renderResponseGraphComparison", "/response-graph", "대응 전후 그래프·잔여 위험",
     ):
         assert marker in dashboard
 

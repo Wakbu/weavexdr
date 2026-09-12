@@ -43,6 +43,15 @@ class GraphQueryBody(BaseModel):
     question: str = Field(min_length=1, max_length=500)
 
 
+class GraphPathBody(BaseModel):
+    start_node_id: str = Field(min_length=1, max_length=500)
+    end_node_id: str = Field(min_length=1, max_length=500)
+
+
+class ResponseGraphBody(BaseModel):
+    blocked_node_ids: list[str] = Field(min_length=1, max_length=30)
+
+
 class PlaybookRequestBody(BaseModel):
     playbook: ResponsePlaybook
     approvals: dict[str, str] = Field(default_factory=dict)

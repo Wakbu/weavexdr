@@ -16,7 +16,7 @@ import secrets
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 from queue import Empty
 from threading import Event, RLock
@@ -31,7 +31,6 @@ from fastapi.responses import JSONResponse
 from pydantic import TypeAdapter
 
 from xdr_graph.models import IncidentReport
-from xdr_graph.ingestion import NormalizedEventBatch
 from xdr_graph.response import (
     ApprovalRecord,
     ApprovalService,
@@ -63,10 +62,11 @@ from xdr_graph.reporting import IncidentReportExporter, SecuritySummaryExporter
 from xdr_graph.self_protection import SelfProtectionMonitor
 from xdr_graph.update_manager import GitHubUpdateService
 from xdr_graph.local_model import OllamaModelManager
-from xdr_graph.graph_insights import analyze_graph, query_graph
+from xdr_graph.graph_insights import analyze_graph, compare_response_graph, find_attack_path, query_graph
 from xdr_graph.commercial_analytics import analyze_security_portfolio
 from xdr_graph.exposure_management import build_exposure_overview
 from xdr_graph.custom_detection import CustomDetectionService
+from xdr_graph.safe_simulation import build_safe_attack_simulation
 from xdr_graph.api_schemas import (
     ApprovalDecisionBody,
     ApprovalRequestBody,
@@ -79,6 +79,8 @@ from xdr_graph.api_schemas import (
     DeleteIncidentBody,
     ExecuteResponseBody,
     GraphQueryBody,
+    GraphPathBody,
+    ResponseGraphBody,
     IncidentManagementBody,
     MergeIncidentsBody,
     ModelSelectionBody,
@@ -407,6 +409,28 @@ def create_app(
             raise HTTPException(status_code=404, detail="incident was not found")
         insights = analyze_graph(report, runtime.event_store.list_incident_reports(limit=500))
         return query_graph(insights, body.question)
+
+    @app.post("/incidents/{incident_id}/graph-path", dependencies=protected)
+    def incident_graph_path(incident_id: str, body: GraphPathBody):
+        report = runtime.event_store.load_incident_report(incident_id)
+        if report is None:
+            raise HTTPException(status_code=404, detail="incident was not found")
+        insights = analyze_graph(report, runtime.event_store.list_incident_reports(limit=500))
+        try:
+            return find_attack_path(insights, body.start_node_id, body.end_node_id)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+
+    @app.post("/incidents/{incident_id}/response-graph", dependencies=protected)
+    def incident_response_graph(incident_id: str, body: ResponseGraphBody):
+        report = runtime.event_store.load_incident_report(incident_id)
+        if report is None:
+            raise HTTPException(status_code=404, detail="incident was not found")
+        insights = analyze_graph(report, runtime.event_store.list_incident_reports(limit=500))
+        try:
+            return compare_response_graph(insights, body.blocked_node_ids)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
 
     @app.post("/incidents/{incident_id}/export", dependencies=protected)
     def export_incident(incident_id: str, body: ReportExportBody):
@@ -959,62 +983,15 @@ def create_app(
     def create_demo_incident():
         # 실제 악성 파일이나 명령을 실행하지 않고 정규화 이벤트만 만들어 전체
         # 탐지·상관분석·저장·화면 흐름을 사용자가 안전하게 체험하게 한다.
-        now = datetime.now(UTC)
         demo_key = uuid4().hex[:12]
-        process_start = now.isoformat()
-        batch = NormalizedEventBatch.model_validate(
-            {
-                "schema_version": "1.0",
-                "batch_id": f"demo-batch-{demo_key}",
-                "incident_id": f"demo-incident-{demo_key}",
-                "collector_id": "weavexdr-safe-demo",
-                "received_at": (now + timedelta(seconds=4)).isoformat(),
-                "events": [
-                    {
-                        "event_id": f"demo-process-{demo_key}",
-                        "event_type": "process_start",
-                        "timestamp": process_start,
-                        "host_id": "local-demo-host",
-                        "source": "sample",
-                        "process_name": "powershell.exe",
-                        "process_id": 4242,
-                        "process_start_time": process_start,
-                        "parent_process": "WINWORD.EXE",
-                        "command_line": "powershell.exe -enc SAFE_DEMO_ONLY",
-                    },
-                    {
-                        "event_id": f"demo-file-{demo_key}",
-                        "event_type": "file_create",
-                        "timestamp": (now + timedelta(seconds=2)).isoformat(),
-                        "host_id": "local-demo-host",
-                        "source": "sample",
-                        "process_name": "powershell.exe",
-                        "process_id": 4242,
-                        "process_start_time": process_start,
-                        "file_path": r"C:\Users\Demo\AppData\Local\Temp\update.exe",
-                    },
-                    {
-                        "event_id": f"demo-network-{demo_key}",
-                        "event_type": "network_connect",
-                        "timestamp": (now + timedelta(seconds=3)).isoformat(),
-                        "host_id": "local-demo-host",
-                        "source": "sample",
-                        "process_name": "powershell.exe",
-                        "process_id": 4242,
-                        "process_start_time": process_start,
-                        "destination_ip": "8.8.8.8",
-                        "destination_port": 443,
-                        "protocol": "tcp",
-                    },
-                ],
-            }
-        )
+        batch = build_safe_attack_simulation(simulation_key=demo_key)
         receipt = PersistentIngestionService(
             runtime.event_store,
             event_publisher=runtime.event_broker,
         ).submit(batch)
         runtime.event_store.update_incident_management(
-            receipt.report.incident_id, {"tags": ["demo"], "note": "안전한 합성 텔레메트리 사건"}
+            receipt.report.incident_id,
+            {"tags": ["demo", "safe-simulation"], "note": "시스템을 변경하지 않은 안전한 합성 공격 흐름"},
         )
         return receipt.report
 
