@@ -70,6 +70,8 @@ $expiredVersions = $releaseEntries |
     Sort-Object Date, Patch -Descending |
     Group-Object Version |
     ForEach-Object { $_.Group[0] } |
+    # Group-Object는 그룹 이름순으로 다시 정렬하므로 그룹화 뒤 숫자순을 복원한다.
+    Sort-Object Date, Patch -Descending |
     Select-Object -Skip 3
 foreach ($expiredVersion in $expiredVersions) {
     $releaseEntries | Where-Object Version -eq $expiredVersion.Version | ForEach-Object {
